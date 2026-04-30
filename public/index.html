@@ -3,107 +3,230 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>DocVerify - Generate & Verify</title>
+  <title>DocVerify - Dashboard</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;padding:32px 16px}
     h1{font-size:24px;color:#1a3a5c;text-align:center;margin-bottom:4px}
-    .sub{text-align:center;color:#888;font-size:14px;margin-bottom:32px}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto}
+    .sub{text-align:center;color:#888;font-size:14px;margin-bottom:28px}
+    .stats{display:flex;gap:12px;max-width:900px;margin:0 auto 24px;justify-content:center}
+    .stat{background:#fff;border-radius:12px;padding:14px 24px;text-align:center;min-width:120px;box-shadow:0 2px 8px rgba(0,0,0,0.05)}
+    .stat .num{font-size:28px;font-weight:700;color:#1a3a5c}
+    .stat .lbl{font-size:11px;color:#aaa;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto 24px}
     @media(max-width:640px){.grid{grid-template-columns:1fr}}
     .card{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07)}
-    .card h2{font-size:16px;color:#1a3a5c;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee}
+    .card-full{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07);max-width:900px;margin:0 auto}
+    .card h2,.card-full h2{font-size:15px;color:#1a3a5c;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
     label{display:block;font-size:12px;color:#888;margin-bottom:4px;margin-top:14px}
     label:first-of-type{margin-top:0}
-    input,select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s}
-    input:focus,select:focus{border-color:#1a3a5c}
+    input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s}
+    input:focus{border-color:#1a3a5c}
     .btn{width:100%;padding:12px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:18px;transition:background 0.2s}
     .btn:hover{background:#15304d}
     .btn:disabled{background:#aaa;cursor:not-allowed}
-    .btn-outline{background:#fff;color:#1a3a5c;border:1.5px solid #1a3a5c;margin-top:10px}
-    .btn-outline:hover{background:#f0f4f8}
     .result{margin-top:20px;display:none}
     .result.show{display:block}
-    .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:32px;font-size:13px;font-weight:600;margin-bottom:14px}
-    .badge.verified{background:#e1f5ee;color:#0f6e56;border:1px solid #9FE1CB}
-    .badge.error{background:#fcebeb;color:#A32D2D;border:1px solid #F7C1C1}
-    .badge.revoked{background:#faeeda;color:#854F0B;border:1px solid #FAC775}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:32px;font-size:12px;font-weight:600}
+    .badge.verified{background:#e1f5ee;color:#0f6e56}
+    .badge.error{background:#fcebeb;color:#A32D2D}
+    .badge.revoked{background:#faeeda;color:#854F0B}
+    .badge.not_found{background:#f5f5f5;color:#888}
     .qr-wrap{text-align:center;margin:16px 0}
     .qr-wrap img{border-radius:8px;border:1px solid #eee;padding:8px;background:#fff}
     .doc-id{font-family:monospace;font-size:12px;background:#f5f5f5;padding:8px 12px;border-radius:6px;word-break:break-all;color:#333;margin-bottom:12px}
-    .field-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5;font-size:13px}
-    .field-row span:first-child{color:#888}
-    .field-row span:last-child{font-weight:500;color:#111}
-    .links{display:flex;gap:8px;margin-top:12px}
-    .links a{flex:1;text-align:center;padding:9px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;border:1.5px solid #1a3a5c;color:#1a3a5c;transition:background 0.2s}
+    .field-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5;font-size:13px;gap:8px}
+    .field-row span:first-child{color:#888;white-space:nowrap}
+    .field-row span:last-child{font-weight:500;color:#111;text-align:right}
+    .links{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    .links a{flex:1;text-align:center;padding:9px;border-radius:8px;font-size:12px;font-weight:500;text-decoration:none;border:1.5px solid #1a3a5c;color:#1a3a5c;white-space:nowrap}
     .links a:hover{background:#f0f4f8}
     .links a.primary{background:#1a3a5c;color:#fff}
     .links a.primary:hover{background:#15304d}
-    .spinner{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .error-msg{color:#A32D2D;font-size:13px;margin-top:10px;display:none}
-    .error-msg.show{display:block}
+    .err{color:#A32D2D;font-size:13px;margin-top:10px;display:none}
+    .err.show{display:block}
+    .log-table{width:100%;border-collapse:collapse;font-size:13px}
+    .log-table th{text-align:left;padding:8px 10px;color:#888;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #eee}
+    .log-table td{padding:10px;border-bottom:1px solid #f5f5f5;vertical-align:top}
+    .log-table tr:last-child td{border-bottom:none}
+    .log-table tr:hover td{background:#fafafa}
+    .ua{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;font-size:11px}
+    .ip{font-family:monospace;font-size:12px;color:#555}
+    .muted{font-size:11px;color:#aaa;margin-top:2px}
+    .refresh-btn{font-size:12px;color:#1a3a5c;background:none;border:none;cursor:pointer;font-weight:500}
+    .refresh-btn:hover{text-decoration:underline}
+    .empty{text-align:center;padding:32px;color:#aaa;font-size:14px}
+    .scroll-wrap{overflow-x:auto}
   </style>
 </head>
 <body>
 
 <h1>DocVerify</h1>
-<p class="sub">Generate authenticated document QR codes or verify any document</p>
+<p class="sub">Generate authenticated QR codes &middot; Verify documents &middot; Audit log</p>
+
+<div class="stats">
+  <div class="stat"><div class="num" id="stat-total">-</div><div class="lbl">Total scans</div></div>
+  <div class="stat"><div class="num" id="stat-today">-</div><div class="lbl">Today</div></div>
+  <div class="stat"><div class="num" id="stat-docs">-</div><div class="lbl">Documents</div></div>
+</div>
 
 <div class="grid">
-
-  <!-- GENERATE -->
   <div class="card">
     <h2>Generate QR code</h2>
-
     <label>Document title</label>
     <input type="text" id="g-title" placeholder="Certificate of Authenticity"/>
-
     <label>Issued to</label>
     <input type="text" id="g-issuedTo" placeholder="Company or person name"/>
-
     <label>Issued by</label>
     <input type="text" id="g-issuedBy" placeholder="Your organisation name"/>
-
     <label>Document type</label>
     <input type="text" id="g-docType" placeholder="Certificate, Invoice, Letter..."/>
-
     <label>Expiry date (optional)</label>
     <input type="date" id="g-expiry"/>
-
     <label>ID prefix (optional)</label>
     <input type="text" id="g-prefix" placeholder="DOC" maxlength="8" style="text-transform:uppercase"/>
-
-    <button class="btn" id="g-btn" onclick="generateDoc()">Generate QR code</button>
-    <p class="error-msg" id="g-error"></p>
-
+    <button class="btn" id="g-btn">Generate QR code</button>
+    <p class="err" id="g-error"></p>
     <div class="result" id="g-result">
-      <div class="qr-wrap">
-        <img id="g-qr" src="" width="160" height="160" alt="QR Code"/>
-      </div>
+      <div class="qr-wrap"><img id="g-qr" src="" width="150" height="150" alt="QR Code"/></div>
       <div class="doc-id" id="g-docid"></div>
       <div id="g-fields"></div>
       <div class="links" id="g-links"></div>
     </div>
   </div>
 
-  <!-- VERIFY -->
   <div class="card">
     <h2>Verify a document</h2>
-
     <label>Document ID</label>
     <input type="text" id="v-docid" placeholder="DOC-20260430-XXXXXXXX" style="font-family:monospace"/>
-
-    <button class="btn" id="v-btn" onclick="verifyDoc()">Verify document</button>
-    <p class="error-msg" id="v-error"></p>
-
+    <button class="btn" id="v-btn">Verify document</button>
+    <p class="err" id="v-error"></p>
     <div class="result" id="v-result"></div>
   </div>
+</div>
 
+<div class="card-full">
+  <h2>Verification log <button class="refresh-btn" id="refresh-btn">Refresh</button></h2>
+  <div class="scroll-wrap">
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Document</th>
+          <th>Result</th>
+          <th>IP address</th>
+          <th>Location</th>
+          <th>Device</th>
+          <th>Date &amp; Time</th>
+        </tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="7" class="empty">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <script>
 const BASE = window.location.origin;
+const locCache = {};
+
+async function getLocation(ip) {
+  if (!ip || ip === '127.0.0.1' || ip.startsWith('::') || ip === 'N/A') return 'Local';
+  if (locCache[ip]) return locCache[ip];
+  try {
+    const r = await fetch(`https://ip-api.com/json/${ip}?fields=city,country,status`);
+    const d = await r.json();
+    const loc = d.status === 'success'
+      ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
+      : 'Unknown';
+    locCache[ip] = loc;
+    return loc;
+  } catch { return 'Unknown'; }
+}
+
+function parseUA(ua) {
+  if (!ua) return 'Unknown';
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Windows/.test(ua)) return 'Windows';
+  if (/Macintosh/.test(ua)) return 'macOS';
+  if (/Linux/.test(ua)) return 'Linux';
+  return ua.slice(0, 25);
+}
+
+function fmtDate(d) {
+  if (!d) return 'N/A';
+  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+function fmtDateTime(d) {
+  if (!d) return 'N/A';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+    + '<br><span style="color:#aaa;font-size:11px">'
+    + dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+    + '</span>';
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadLogs() {
+  const body = document.getElementById('log-body');
+  try {
+    const [logsRes, docsRes] = await Promise.all([
+      fetch(`${BASE}/verify/api/logs`),
+      fetch(`${BASE}/api/documents?limit=1`)
+    ]);
+    const logsData = await logsRes.json();
+    const docsData = await docsRes.json();
+    const logs  = logsData.logs || [];
+    const total = logsData.total || 0;
+    const today = logs.filter(l =>
+      new Date(l.verified_at).toDateString() === new Date().toDateString()
+    ).length;
+
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-today').textContent = today;
+    document.getElementById('stat-docs').textContent = docsData.pagination?.total ?? '-';
+
+    if (!logs.length) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">No verifications yet.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = logs.map((l, i) => {
+      const bc = l.result === 'found' ? 'verified' : l.result === 'revoked' ? 'revoked' : 'not_found';
+      const bl = l.result === 'found' ? 'Verified' : l.result === 'revoked' ? 'Revoked' : 'Not found';
+      const docInfo = l.title
+        ? `<strong>${esc(l.title)}</strong><div class="muted">${esc(l.doc_id)}</div><div class="muted">${esc(l.issued_to || '')}</div>`
+        : `<span class="ip">${esc(l.doc_id)}</span>`;
+      return `<tr>
+        <td style="color:#aaa;font-size:12px">${total - i}</td>
+        <td>${docInfo}</td>
+        <td><span class="badge ${bc}">${bl}</span></td>
+        <td><span class="ip">${esc(l.ip_address || 'N/A')}</span></td>
+        <td class="muted" id="loc-${l.id}">...</td>
+        <td><div class="ua" title="${esc(l.user_agent)}">${esc(parseUA(l.user_agent))}</div></td>
+        <td style="font-size:12px;white-space:nowrap">${fmtDateTime(l.verified_at)}</td>
+      </tr>`;
+    }).join('');
+
+    logs.forEach(async l => {
+      const loc = await getLocation(l.ip_address);
+      const el  = document.getElementById(`loc-${l.id}`);
+      if (el) el.textContent = loc;
+    });
+
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load logs.</td></tr>';
+  }
+}
 
 async function generateDoc() {
   const title    = document.getElementById('g-title').value.trim();
@@ -114,7 +237,6 @@ async function generateDoc() {
   const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
   const errEl    = document.getElementById('g-error');
   const btn      = document.getElementById('g-btn');
-
   errEl.classList.remove('show');
 
   if (!title || !issuedTo || !issuedBy) {
@@ -127,21 +249,17 @@ async function generateDoc() {
   btn.innerHTML = '<span class="spinner"></span>Generating...';
 
   try {
-    const res = await fetch(`${BASE}/api/documents`, {
+    const res  = await fetch(`${BASE}/api/documents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix })
     });
-
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to generate.');
+    if (!res.ok) throw new Error(data.error || 'Failed.');
 
     const doc = data.document;
-    const qr  = data.qr;
-
-    document.getElementById('g-qr').src = qr.dataUrl;
+    document.getElementById('g-qr').src = data.qr.dataUrl;
     document.getElementById('g-docid').textContent = doc.doc_id;
-
     document.getElementById('g-fields').innerHTML = `
       <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
       <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
@@ -149,16 +267,15 @@ async function generateDoc() {
       <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
       ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
     `;
-
     document.getElementById('g-links').innerHTML = `
       <a href="${BASE}/api/documents/${doc.doc_id}/pdf" target="_blank" class="primary">Download PDF</a>
       <a href="${BASE}/api/documents/${doc.doc_id}/qr" target="_blank">Download QR</a>
-      <a href="${qr.url}" target="_blank">View verify page</a>
+      <a href="${data.qr.url}" target="_blank">Verify page</a>
     `;
-
     document.getElementById('g-result').classList.add('show');
-  } catch (err) {
-    errEl.textContent = err.message;
+    setTimeout(loadLogs, 800);
+  } catch (e) {
+    errEl.textContent = e.message;
     errEl.classList.add('show');
   } finally {
     btn.disabled = false;
@@ -167,11 +284,10 @@ async function generateDoc() {
 }
 
 async function verifyDoc() {
-  const docId  = document.getElementById('v-docid').value.trim();
-  const errEl  = document.getElementById('v-error');
+  const docId = document.getElementById('v-docid').value.trim();
+  const errEl = document.getElementById('v-error');
   const result = document.getElementById('v-result');
-  const btn    = document.getElementById('v-btn');
-
+  const btn   = document.getElementById('v-btn');
   errEl.classList.remove('show');
   result.classList.remove('show');
 
@@ -188,28 +304,26 @@ async function verifyDoc() {
     const res  = await fetch(`${BASE}/verify/api/${encodeURIComponent(docId)}`);
     const data = await res.json();
     const doc  = data.document;
-
-    let badgeClass = 'verified', badgeLabel = '&#10003; Verified Authentic';
+    let bc = 'verified', bl = '&#10003; Verified Authentic';
     if (!data.valid) {
-      badgeClass = data.status === 'revoked' ? 'revoked' : 'error';
-      badgeLabel = data.status === 'revoked' ? '&#10007; Document Revoked' : '&#33; Not Found';
+      bc = data.status === 'revoked' ? 'revoked' : 'error';
+      bl = data.status === 'revoked' ? '&#10007; Revoked' : '&#33; Not Found';
     }
-
     result.innerHTML = `
-      <div class="badge ${badgeClass}">${badgeLabel}</div>
+      <div class="badge ${bc}" style="margin-bottom:14px">${bl}</div>
       ${doc ? `
         <div class="doc-id">${esc(doc.doc_id)}</div>
         <div class="field-row"><span>Title</span><span>${esc(doc.title)}</span></div>
         <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
         <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
-        <div class="field-row"><span>Type</span><span>${esc(doc.doc_type || 'N/A')}</span></div>
         <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
         ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
         <div class="field-row"><span>Status</span><span>${esc(doc.status)}</span></div>
-      ` : `<p style="font-size:14px;color:#888;margin-top:8px">No document found for that ID.</p>`}
+      ` : '<p style="font-size:13px;color:#888;margin-top:8px">No document found for that ID.</p>'}
     `;
     result.classList.add('show');
-  } catch (err) {
+    setTimeout(loadLogs, 800);
+  } catch (e) {
     errEl.textContent = 'Verification failed. Please try again.';
     errEl.classList.add('show');
   } finally {
@@ -218,18 +332,15 @@ async function verifyDoc() {
   }
 }
 
+document.getElementById('g-btn').addEventListener('click', generateDoc);
+document.getElementById('v-btn').addEventListener('click', verifyDoc);
+document.getElementById('refresh-btn').addEventListener('click', loadLogs);
 document.getElementById('v-docid').addEventListener('keydown', e => {
   if (e.key === 'Enter') verifyDoc();
 });
 
-function esc(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function fmtDate(d) {
-  if (!d) return 'N/A';
-  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' });
-}
+loadLogs();
+setInterval(loadLogs, 30000);
 </script>
 </body>
 </html>
