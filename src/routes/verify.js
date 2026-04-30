@@ -69,6 +69,37 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/logs - verification audit log with document info
+router.get('/api/logs', async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, parseInt(req.query.limit) || 50);
+  const offset = (page - 1) * limit;
+
+  try {
+    const result = await pool.query(
+      `SELECT vl.id, vl.doc_id, vl.verified_at, vl.ip_address, vl.user_agent, vl.result,
+              d.title, d.issued_to, d.issued_by, d.doc_type
+       FROM verification_log vl
+       LEFT JOIN documents d ON d.doc_id = vl.doc_id
+       ORDER BY vl.verified_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    const countResult = await pool.query('SELECT COUNT(*) FROM verification_log');
+
+    res.json({
+      logs: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error('Logs error:', err);
+    res.status(500).json({ error: 'Failed to fetch logs.' });
+  }
+});
+
 // GET /api/verify/:docId - JSON version for programmatic checks
 router.get('/api/:docId', async (req, res) => {
   const { docId } = req.params;
