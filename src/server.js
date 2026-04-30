@@ -7,6 +7,7 @@ const documentsRouter = require('./routes/documents');
 const verifyRouter = require('./routes/verify');
 const { verifyLimiter, createLimiter } = require('./middleware/rateLimiter');
 
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -26,6 +27,10 @@ app.use(express.urlencoded({ extended: false }));
 
 // Trust proxy for correct IP behind nginx/load balancer
 app.set('trust proxy', 1);
+
+// Serve admin UI
+app.use(express.static(path.join(__dirname, '../public')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 // Routes
 app.use('/verify', verifyLimiter, verifyRouter);

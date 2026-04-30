@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>DocVerify - Generate & Verify</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;padding:32px 16px}
+    h1{font-size:24px;color:#1a3a5c;text-align:center;margin-bottom:4px}
+    .sub{text-align:center;color:#888;font-size:14px;margin-bottom:32px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto}
+    @media(max-width:640px){.grid{grid-template-columns:1fr}}
+    .card{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07)}
+    .card h2{font-size:16px;color:#1a3a5c;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee}
+    label{display:block;font-size:12px;color:#888;margin-bottom:4px;margin-top:14px}
+    label:first-of-type{margin-top:0}
+    input,select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s}
+    input:focus,select:focus{border-color:#1a3a5c}
+    .btn{width:100%;padding:12px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:18px;transition:background 0.2s}
+    .btn:hover{background:#15304d}
+    .btn:disabled{background:#aaa;cursor:not-allowed}
+    .btn-outline{background:#fff;color:#1a3a5c;border:1.5px solid #1a3a5c;margin-top:10px}
+    .btn-outline:hover{background:#f0f4f8}
+    .result{margin-top:20px;display:none}
+    .result.show{display:block}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:32px;font-size:13px;font-weight:600;margin-bottom:14px}
+    .badge.verified{background:#e1f5ee;color:#0f6e56;border:1px solid #9FE1CB}
+    .badge.error{background:#fcebeb;color:#A32D2D;border:1px solid #F7C1C1}
+    .badge.revoked{background:#faeeda;color:#854F0B;border:1px solid #FAC775}
+    .qr-wrap{text-align:center;margin:16px 0}
+    .qr-wrap img{border-radius:8px;border:1px solid #eee;padding:8px;background:#fff}
+    .doc-id{font-family:monospace;font-size:12px;background:#f5f5f5;padding:8px 12px;border-radius:6px;word-break:break-all;color:#333;margin-bottom:12px}
+    .field-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5;font-size:13px}
+    .field-row span:first-child{color:#888}
+    .field-row span:last-child{font-weight:500;color:#111}
+    .links{display:flex;gap:8px;margin-top:12px}
+    .links a{flex:1;text-align:center;padding:9px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;border:1.5px solid #1a3a5c;color:#1a3a5c;transition:background 0.2s}
+    .links a:hover{background:#f0f4f8}
+    .links a.primary{background:#1a3a5c;color:#fff}
+    .links a.primary:hover{background:#15304d}
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error-msg{color:#A32D2D;font-size:13px;margin-top:10px;display:none}
+    .error-msg.show{display:block}
+  </style>
+</head>
+<body>
+
+<h1>DocVerify</h1>
+<p class="sub">Generate authenticated document QR codes or verify any document</p>
+
+<div class="grid">
+
+  <!-- GENERATE -->
+  <div class="card">
+    <h2>Generate QR code</h2>
+
+    <label>Document title</label>
+    <input type="text" id="g-title" placeholder="Certificate of Authenticity"/>
+
+    <label>Issued to</label>
+    <input type="text" id="g-issuedTo" placeholder="Company or person name"/>
+
+    <label>Issued by</label>
+    <input type="text" id="g-issuedBy" placeholder="Your organisation name"/>
+
+    <label>Document type</label>
+    <input type="text" id="g-docType" placeholder="Certificate, Invoice, Letter..."/>
+
+    <label>Expiry date (optional)</label>
+    <input type="date" id="g-expiry"/>
+
+    <label>ID prefix (optional)</label>
+    <input type="text" id="g-prefix" placeholder="DOC" maxlength="8" style="text-transform:uppercase"/>
+
+    <button class="btn" id="g-btn" onclick="generateDoc()">Generate QR code</button>
+    <p class="error-msg" id="g-error"></p>
+
+    <div class="result" id="g-result">
+      <div class="qr-wrap">
+        <img id="g-qr" src="" width="160" height="160" alt="QR Code"/>
+      </div>
+      <div class="doc-id" id="g-docid"></div>
+      <div id="g-fields"></div>
+      <div class="links" id="g-links"></div>
+    </div>
+  </div>
+
+  <!-- VERIFY -->
+  <div class="card">
+    <h2>Verify a document</h2>
+
+    <label>Document ID</label>
+    <input type="text" id="v-docid" placeholder="DOC-20260430-XXXXXXXX" style="font-family:monospace"/>
+
+    <button class="btn" id="v-btn" onclick="verifyDoc()">Verify document</button>
+    <p class="error-msg" id="v-error"></p>
+
+    <div class="result" id="v-result"></div>
+  </div>
+
+</div>
+
+<script>
+const BASE = window.location.origin;
+
+async function generateDoc() {
+  const title    = document.getElementById('g-title').value.trim();
+  const issuedTo = document.getElementById('g-issuedTo').value.trim();
+  const issuedBy = document.getElementById('g-issuedBy').value.trim();
+  const docType  = document.getElementById('g-docType').value.trim();
+  const expiry   = document.getElementById('g-expiry').value;
+  const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
+  const errEl    = document.getElementById('g-error');
+  const btn      = document.getElementById('g-btn');
+
+  errEl.classList.remove('show');
+
+  if (!title || !issuedTo || !issuedBy) {
+    errEl.textContent = 'Title, Issued To, and Issued By are required.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Generating...';
+
+  try {
+    const res = await fetch(`${BASE}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to generate.');
+
+    const doc = data.document;
+    const qr  = data.qr;
+
+    document.getElementById('g-qr').src = qr.dataUrl;
+    document.getElementById('g-docid').textContent = doc.doc_id;
+
+    document.getElementById('g-fields').innerHTML = `
+      <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
+      <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
+      <div class="field-row"><span>Type</span><span>${esc(doc.doc_type || 'N/A')}</span></div>
+      <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
+      ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
+    `;
+
+    document.getElementById('g-links').innerHTML = `
+      <a href="${BASE}/api/documents/${doc.doc_id}/pdf" target="_blank" class="primary">Download PDF</a>
+      <a href="${BASE}/api/documents/${doc.doc_id}/qr" target="_blank">Download QR</a>
+      <a href="${qr.url}" target="_blank">View verify page</a>
+    `;
+
+    document.getElementById('g-result').classList.add('show');
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate QR code';
+  }
+}
+
+async function verifyDoc() {
+  const docId  = document.getElementById('v-docid').value.trim();
+  const errEl  = document.getElementById('v-error');
+  const result = document.getElementById('v-result');
+  const btn    = document.getElementById('v-btn');
+
+  errEl.classList.remove('show');
+  result.classList.remove('show');
+
+  if (!docId) {
+    errEl.textContent = 'Please enter a document ID.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Verifying...';
+
+  try {
+    const res  = await fetch(`${BASE}/verify/api/${encodeURIComponent(docId)}`);
+    const data = await res.json();
+    const doc  = data.document;
+
+    let badgeClass = 'verified', badgeLabel = '&#10003; Verified Authentic';
+    if (!data.valid) {
+      badgeClass = data.status === 'revoked' ? 'revoked' : 'error';
+      badgeLabel = data.status === 'revoked' ? '&#10007; Document Revoked' : '&#33; Not Found';
+    }
+
+    result.innerHTML = `
+      <div class="badge ${badgeClass}">${badgeLabel}</div>
+      ${doc ? `
+        <div class="doc-id">${esc(doc.doc_id)}</div>
+        <div class="field-row"><span>Title</span><span>${esc(doc.title)}</span></div>
+        <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
+        <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
+        <div class="field-row"><span>Type</span><span>${esc(doc.doc_type || 'N/A')}</span></div>
+        <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
+        ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
+        <div class="field-row"><span>Status</span><span>${esc(doc.status)}</span></div>
+      ` : `<p style="font-size:14px;color:#888;margin-top:8px">No document found for that ID.</p>`}
+    `;
+    result.classList.add('show');
+  } catch (err) {
+    errEl.textContent = 'Verification failed. Please try again.';
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verify document';
+  }
+}
+
+document.getElementById('v-docid').addEventListener('keydown', e => {
+  if (e.key === 'Enter') verifyDoc();
+});
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtDate(d) {
+  if (!d) return 'N/A';
+  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' });
+}
+</script>
+</body>
+</html>
