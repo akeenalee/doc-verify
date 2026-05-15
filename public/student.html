@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UniVerify Student Portal</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;padding:24px 16px}
+    .container{max-width:700px;margin:0 auto}
+    h1{font-size:22px;color:#1a3a5c;text-align:center;margin-bottom:4px}
+    .sub{text-align:center;color:#888;font-size:14px;margin-bottom:28px}
+    .card{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07);margin-bottom:20px}
+    .card h2{font-size:15px;color:#1a3a5c;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #eee}
+    label{display:block;font-size:12px;color:#888;margin-bottom:4px;margin-top:14px}
+    label:first-of-type{margin-top:0}
+    input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s}
+    input:focus{border-color:#1a3a5c}
+    .btn{width:100%;padding:12px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;transition:background 0.2s}
+    .btn:hover{background:#15304d}
+    .btn:disabled{background:#aaa;cursor:not-allowed}
+    .btn-outline{background:#fff;color:#1a3a5c;border:1.5px solid #1a3a5c}
+    .btn-outline:hover{background:#f0f4f8}
+    .btn-sm{padding:8px 16px;font-size:13px;width:auto;margin-top:0;border-radius:6px}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .err{color:#A32D2D;font-size:13px;margin-top:8px;display:none}
+    .err.show{display:block}
+    .tabs{display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:20px}
+    .tab{padding:10px 18px;font-size:13px;font-weight:500;color:#888;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.2s}
+    .tab.active{color:#1a3a5c;border-bottom-color:#1a3a5c}
+    .tab-content{display:none}
+    .tab-content.active{display:block}
+    .balance-box{display:flex;align-items:center;justify-content:space-between;background:#f0f4f8;border-radius:10px;padding:16px 20px;margin-bottom:20px}
+    .balance-num{font-size:36px;font-weight:700;color:#1a3a5c}
+    .balance-label{font-size:12px;color:#888;margin-top:2px}
+    .bundle-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+    .bundle{border:1.5px solid #ddd;border-radius:10px;padding:14px;cursor:pointer;transition:all 0.2s;text-align:center}
+    .bundle:hover,.bundle.selected{border-color:#1a3a5c;background:#f0f4f8}
+    .bundle .tokens{font-size:20px;font-weight:700;color:#1a3a5c}
+    .bundle .price{font-size:13px;color:#888;margin-top:2px}
+    .bundle .save{font-size:11px;color:#0f6e56;margin-top:2px;font-weight:500}
+    .log-table{width:100%;border-collapse:collapse;font-size:13px}
+    .log-table th{text-align:left;padding:8px 10px;color:#888;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #eee}
+    .log-table td{padding:10px;border-bottom:1px solid #f5f5f5;vertical-align:top}
+    .log-table tr:last-child td{border-bottom:none}
+    .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+    .badge.verified{background:#e1f5ee;color:#0f6e56}
+    .badge.token{background:#e8f0fe;color:#1a3a5c}
+    .badge.paid{background:#faeeda;color:#854F0B}
+    .muted{font-size:11px;color:#aaa;margin-top:2px}
+    .empty{text-align:center;padding:32px;color:#aaa;font-size:14px}
+    .success-banner{background:#e1f5ee;border:1px solid #9FE1CB;border-radius:8px;padding:10px 14px;font-size:13px;color:#0f6e56;margin-bottom:16px;display:none}
+    .success-banner.show{display:block}
+    .error-banner{background:#fcebeb;border:1px solid #F7C1C1;border-radius:8px;padding:10px 14px;font-size:13px;color:#A32D2D;margin-bottom:16px;display:none}
+    .error-banner.show{display:block}
+    #auth-section{display:block}
+    #portal-section{display:none}
+    .toggle-link{text-align:center;font-size:13px;color:#1a3a5c;cursor:pointer;margin-top:12px;display:block}
+    .toggle-link:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>UniVerify Student Portal</h1>
+  <p class="sub">Manage your verification tokens and view your verification history</p>
+
+  <div class="success-banner" id="global-success"></div>
+  <div class="error-banner"   id="global-error"></div>
+
+  <!-- AUTH -->
+  <div id="auth-section">
+    <div class="card" id="login-card">
+      <h2>Log in to your portal</h2>
+      <label>Matric number</label>
+      <input type="text" id="login-matric" placeholder="e.g. 180101001" style="text-transform:uppercase"/>
+      <label>Institution</label>
+      <input type="text" id="login-institution" placeholder="e.g. University of Lagos"/>
+      <label>PIN</label>
+      <input type="password" id="login-pin" placeholder="4-8 digit PIN" maxlength="8"/>
+      <button class="btn" id="login-btn">Log in</button>
+      <p class="err" id="login-err"></p>
+      <span class="toggle-link" id="show-register">Don't have an account? Register here</span>
+    </div>
+
+    <div class="card" id="register-card" style="display:none">
+      <h2>Create your portal account</h2>
+      <label>Full name</label>
+      <input type="text" id="reg-name" placeholder="Your full name"/>
+      <label>Matric number</label>
+      <input type="text" id="reg-matric" placeholder="e.g. 180101001" style="text-transform:uppercase"/>
+      <label>Institution</label>
+      <input type="text" id="reg-institution" placeholder="e.g. University of Lagos"/>
+      <label>Email (optional, for receipts and alerts)</label>
+      <input type="email" id="reg-email" placeholder="you@email.com"/>
+      <label>Phone (optional, for SMS alerts)</label>
+      <input type="tel" id="reg-phone" placeholder="e.g. 08012345678"/>
+      <label>Set a PIN (4-8 digits)</label>
+      <input type="password" id="reg-pin" placeholder="Choose a PIN" maxlength="8"/>
+      <button class="btn" id="register-btn">Create account</button>
+      <p class="err" id="reg-err"></p>
+      <span class="toggle-link" id="show-login">Already have an account? Log in</span>
+    </div>
+  </div>
+
+  <!-- PORTAL -->
+  <div id="portal-section">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <p style="font-size:15px;font-weight:600;color:#1a3a5c" id="portal-name">Welcome</p>
+          <p style="font-size:12px;color:#888" id="portal-matric"></p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="logout-btn">Log out</button>
+      </div>
+
+      <div class="balance-box">
+        <div>
+          <div class="balance-num" id="token-balance">0</div>
+          <div class="balance-label">Verification tokens remaining</div>
+        </div>
+        <button class="btn btn-sm" id="buy-tab-btn" style="width:auto">Buy tokens</button>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="log">Verification log</div>
+        <div class="tab" data-tab="buy">Buy tokens</div>
+        <div class="tab" data-tab="settings">Settings</div>
+      </div>
+
+      <div class="tab-content active" id="tab-log">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Document</th>
+              <th>Result</th>
+              <th>How paid</th>
+              <th>Location</th>
+              <th>Date &amp; Time</th>
+            </tr>
+          </thead>
+          <tbody id="log-body">
+            <tr><td colspan="5" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tab-content" id="tab-buy">
+        <p style="font-size:13px;color:#888;margin-bottom:16px">Select a bundle. Payment via Paystack (card, bank transfer, or USSD).</p>
+        <div class="bundle-grid" id="bundle-grid"></div>
+        <p style="font-size:12px;color:#888;margin-bottom:8px">Email for receipt</p>
+        <input type="email" id="buy-email" placeholder="you@email.com"/>
+        <button class="btn" id="buy-btn">Proceed to payment</button>
+        <p class="err" id="buy-err"></p>
+      </div>
+
+      <div class="tab-content" id="tab-settings">
+        <p style="font-size:13px;font-weight:500;color:#1a3a5c;margin-bottom:12px">Notification preferences</p>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <input type="checkbox" id="notify-email" style="width:auto"/>
+          <label for="notify-email" style="margin:0;font-size:13px;color:#444">Email me when my document is verified</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <input type="checkbox" id="notify-sms" style="width:auto"/>
+          <label for="notify-sms" style="margin:0;font-size:13px;color:#444">SMS me when my document is verified</label>
+        </div>
+        <label>Update email</label>
+        <input type="email" id="settings-email" placeholder="your@email.com"/>
+        <label>Update phone</label>
+        <input type="tel" id="settings-phone" placeholder="08012345678"/>
+        <button class="btn" id="save-settings-btn">Save preferences</button>
+        <p class="err" id="settings-err"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = window.location.origin;
+const locCache = {};
+let selectedBundle = null;
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('success') === 'tokens_added') {
+  showGlobalSuccess(`${params.get('tokens')} verification token(s) added to your account.`);
+}
+if (params.get('error')) {
+  const msgs = {
+    payment_failed:      'Payment was not completed.',
+    verification_failed: 'An error occurred. Please try again.',
+  };
+  showGlobalError(msgs[params.get('error')] || 'An error occurred.');
+}
+
+(async () => {
+  try {
+    const res = await fetch(`${BASE}/api/tokens/me`);
+    if (res.ok) { const { student } = await res.json(); showPortal(student); }
+  } catch (e) {}
+})();
+
+document.getElementById('show-register').addEventListener('click', () => {
+  document.getElementById('login-card').style.display    = 'none';
+  document.getElementById('register-card').style.display = 'block';
+});
+document.getElementById('show-login').addEventListener('click', () => {
+  document.getElementById('register-card').style.display = 'none';
+  document.getElementById('login-card').style.display    = 'block';
+});
+
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const matric      = document.getElementById('login-matric').value.trim().toUpperCase();
+  const institution = document.getElementById('login-institution').value.trim();
+  const pin         = document.getElementById('login-pin').value.trim();
+  const errEl       = document.getElementById('login-err');
+  const btn         = document.getElementById('login-btn');
+  errEl.classList.remove('show');
+  if (!matric || !institution || !pin) {
+    errEl.textContent = 'All fields are required.'; errEl.classList.add('show'); return;
+  }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Logging in...';
+  try {
+    const res  = await fetch(`${BASE}/api/tokens/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matric_number: matric, institution, pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showPortal(data.student);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally { btn.disabled = false; btn.textContent = 'Log in'; }
+});
+
+document.getElementById('register-btn').addEventListener('click', async () => {
+  const full_name   = document.getElementById('reg-name').value.trim();
+  const matric      = document.getElementById('reg-matric').value.trim().toUpperCase();
+  const institution = document.getElementById('reg-institution').value.trim();
+  const email       = document.getElementById('reg-email').value.trim();
+  const phone       = document.getElementById('reg-phone').value.trim();
+  const pin         = document.getElementById('reg-pin').value.trim();
+  const errEl       = document.getElementById('reg-err');
+  const btn         = document.getElementById('register-btn');
+  errEl.classList.remove('show');
+  if (!matric || !institution || !pin) {
+    errEl.textContent = 'Matric number, institution, and PIN are required.';
+    errEl.classList.add('show'); return;
+  }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating account...';
+  try {
+    const res  = await fetch(`${BASE}/api/tokens/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matric_number: matric, institution, full_name, email, phone, pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showPortal(data.student);
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally { btn.disabled = false; btn.textContent = 'Create account'; }
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await fetch(`${BASE}/api/tokens/logout`, { method: 'POST' });
+  location.reload();
+});
+
+async function showPortal(student) {
+  document.getElementById('auth-section').style.display   = 'none';
+  document.getElementById('portal-section').style.display = 'block';
+  document.getElementById('portal-name').textContent      = student.full_name || student.matric_number;
+  document.getElementById('portal-matric').textContent    = `${student.matric_number} · ${student.institution}`;
+  document.getElementById('token-balance').textContent    = student.token_balance;
+  if (student.email) {
+    document.getElementById('buy-email').value      = student.email;
+    document.getElementById('settings-email').value = student.email;
+  }
+  if (student.phone) document.getElementById('settings-phone').value = student.phone;
+  document.getElementById('notify-email').checked = student.notify_email || false;
+  document.getElementById('notify-sms').checked   = student.notify_sms   || false;
+  loadBundles();
+  loadLog();
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+document.getElementById('buy-tab-btn').addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('[data-tab="buy"]').classList.add('active');
+  document.getElementById('tab-buy').classList.add('active');
+});
+
+async function loadBundles() {
+  try {
+    const res  = await fetch(`${BASE}/api/tokens/bundles`);
+    const data = await res.json();
+    const grid = document.getElementById('bundle-grid');
+    const saves = ['', 'Save N500', 'Save N1,000', 'Save N3,000'];
+    grid.innerHTML = data.bundles.map(b => `
+      <div class="bundle" data-id="${b.id}">
+        <div class="tokens">${b.tokens}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${b.tokens === 1 ? 'verification' : 'verifications'}</div>
+        <div class="price">N${(b.amountKobo / 100).toLocaleString()}</div>
+        ${saves[b.id - 1] ? `<div class="save">${saves[b.id - 1]}</div>` : ''}
+      </div>
+    `).join('');
+    grid.querySelectorAll('.bundle').forEach(el => {
+      el.addEventListener('click', () => {
+        grid.querySelectorAll('.bundle').forEach(b => b.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedBundle = parseInt(el.dataset.id);
+      });
+    });
+  } catch (e) {}
+}
+
+document.getElementById('buy-btn').addEventListener('click', async () => {
+  const email = document.getElementById('buy-email').value.trim();
+  const errEl = document.getElementById('buy-err');
+  const btn   = document.getElementById('buy-btn');
+  errEl.classList.remove('show');
+  if (!selectedBundle) {
+    errEl.textContent = 'Please select a bundle.'; errEl.classList.add('show'); return;
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errEl.textContent = 'Please enter a valid email for your receipt.'; errEl.classList.add('show'); return;
+  }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Initiating payment...';
+  try {
+    const res  = await fetch(`${BASE}/api/tokens/buy`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bundle_id: selectedBundle }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    window.location.href = data.payment_url;
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+    btn.disabled = false; btn.textContent = 'Proceed to payment';
+  }
+});
+
+async function loadLog() {
+  const body = document.getElementById('log-body');
+  try {
+    const res  = await fetch(`${BASE}/api/tokens/log`);
+    const data = await res.json();
+    const logs = data.logs || [];
+    if (!logs.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No verifications yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = logs.map(l => {
+      const payBadge = l.payment_method === 'student_token'
+        ? '<span class="badge token">Token</span>'
+        : l.payment_method === 'employer_payment'
+        ? '<span class="badge paid">Employer paid</span>'
+        : '<span class="badge verified">Free</span>';
+      return `<tr>
+        <td><strong>${esc(l.title || l.doc_id)}</strong><div class="muted">${esc(l.doc_type || '')}</div></td>
+        <td><span class="badge verified">Verified</span></td>
+        <td>${payBadge}</td>
+        <td class="muted" id="sloc-${l.id}">...</td>
+        <td style="font-size:12px;white-space:nowrap">${fmtDateTime(l.verified_at)}</td>
+      </tr>`;
+    }).join('');
+    logs.forEach(async l => {
+      const loc = await getLocation(l.ip_address);
+      const el  = document.getElementById(`sloc-${l.id}`);
+      if (el) el.textContent = loc;
+    });
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">Failed to load log.</td></tr>';
+  }
+}
+
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
+  const btn   = document.getElementById('save-settings-btn');
+  const errEl = document.getElementById('settings-err');
+  errEl.classList.remove('show');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving...';
+  try {
+    const res = await fetch(`${BASE}/api/tokens/notifications`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notify_email: document.getElementById('notify-email').checked,
+        notify_sms:   document.getElementById('notify-sms').checked,
+        email:        document.getElementById('settings-email').value.trim() || null,
+        phone:        document.getElementById('settings-phone').value.trim() || null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showGlobalSuccess('Preferences saved.');
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally { btn.disabled = false; btn.textContent = 'Save preferences'; }
+});
+
+async function getLocation(ip) {
+  if (!ip || ip === '127.0.0.1' || ip.startsWith('::')) return 'Local';
+  if (locCache[ip]) return locCache[ip];
+  try {
+    const r = await fetch(`https://ip-api.com/json/${ip}?fields=city,country,status`);
+    const d = await r.json();
+    const loc = d.status === 'success' ? [d.city, d.country].filter(Boolean).join(', ') : 'Unknown';
+    locCache[ip] = loc; return loc;
+  } catch { return 'Unknown'; }
+}
+
+function fmtDateTime(d) {
+  if (!d) return 'N/A';
+  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+    + ' ' + new Date(d).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showGlobalSuccess(msg) {
+  const el = document.getElementById('global-success');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+function showGlobalError(msg) {
+  const el = document.getElementById('global-error');
+  el.textContent = msg; el.classList.add('show');
+}
+</script>
+</body>
+</html>
