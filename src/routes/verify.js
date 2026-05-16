@@ -80,6 +80,31 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /verify/api/payment-callback - Paystack redirects here after employer payment
+router.get('/api/payment-callback', async (req, res) => {
+  const { reference } = req.query;
+  if (!reference) return res.redirect('/pay.html?error=missing_reference');
+
+  try {
+    const txn = await verifyTransaction(reference);
+    if (txn.status !== 'success') return res.redirect('/pay.html?error=payment_failed');
+
+    const doc_id = txn.metadata?.doc_id;
+    if (!doc_id) return res.redirect('/pay.html?error=invalid_metadata');
+
+    await pool.query(
+      `UPDATE verification_payments SET paystack_status='success', completed_at=NOW()
+       WHERE paystack_ref=$1`,
+      [reference]
+    );
+
+    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&paid=${encodeURIComponent(reference)}`);
+  } catch (err) {
+    console.error('Payment callback error:', err);
+    res.redirect('/pay.html?error=verification_failed');
+  }
+});
+
 // GET /verify/api/:docId - JSON result
 router.get('/api/:docId', async (req, res) => {
   const { docId } = req.params;
@@ -167,31 +192,6 @@ router.post('/api/initiate-payment', async (req, res) => {
   } catch (err) {
     console.error('Initiate payment error:', err);
     res.status(500).json({ error: 'Failed to initiate payment.' });
-  }
-});
-
-// GET /verify/api/payment-callback - Paystack redirects here after employer payment
-router.get('/api/payment-callback', async (req, res) => {
-  const { reference } = req.query;
-  if (!reference) return res.redirect('/pay.html?error=missing_reference');
-
-  try {
-    const txn = await verifyTransaction(reference);
-    if (txn.status !== 'success') return res.redirect('/pay.html?error=payment_failed');
-
-    const doc_id = txn.metadata?.doc_id;
-    if (!doc_id) return res.redirect('/pay.html?error=invalid_metadata');
-
-    await pool.query(
-      `UPDATE verification_payments SET paystack_status='success', completed_at=NOW()
-       WHERE paystack_ref=$1`,
-      [reference]
-    );
-
-    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&paid=${encodeURIComponent(reference)}`);
-  } catch (err) {
-    console.error('Payment callback error:', err);
-    res.redirect('/pay.html?error=verification_failed');
   }
 });
 
