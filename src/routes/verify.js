@@ -104,30 +104,6 @@ router.get('/api/payment-callback', async (req, res) => {
     res.redirect('/pay.html?error=verification_failed');
   }
 });
-
-// GET /verify/api/:docId - JSON result
-router.get('/api/:docId', async (req, res) => {
-  const { docId } = req.params;
-  try {
-    const result = await pool.query(
-      `SELECT doc_id, title, issued_to, issued_by, doc_type,
-              issue_date, expiry_date, status
-       FROM documents WHERE doc_id = $1`,
-      [docId]
-    );
-    if (!result.rows.length) return res.status(404).json({ valid: false, reason: 'not_found' });
-    const doc       = result.rows[0];
-    const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
-    res.json({
-      valid:    doc.status === 'active' && !isExpired,
-      status:   isExpired ? 'expired' : doc.status,
-      document: doc,
-    });
-  } catch (err) {
-    res.status(500).json({ valid: false, reason: 'server_error' });
-  }
-});
-
 // GET /verify/api/logs - admin audit log
 router.get('/api/logs', async (req, res) => {
   const page   = Math.max(1, parseInt(req.query.page) || 1);
@@ -156,6 +132,30 @@ router.get('/api/logs', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch logs.' });
   }
 });
+// GET /verify/api/:docId - JSON result
+router.get('/api/:docId', async (req, res) => {
+  const { docId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT doc_id, title, issued_to, issued_by, doc_type,
+              issue_date, expiry_date, status
+       FROM documents WHERE doc_id = $1`,
+      [docId]
+    );
+    if (!result.rows.length) return res.status(404).json({ valid: false, reason: 'not_found' });
+    const doc       = result.rows[0];
+    const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+    res.json({
+      valid:    doc.status === 'active' && !isExpired,
+      status:   isExpired ? 'expired' : doc.status,
+      document: doc,
+    });
+  } catch (err) {
+    res.status(500).json({ valid: false, reason: 'server_error' });
+  }
+});
+
+
 
 // POST /verify/api/initiate-payment - employer starts payment
 router.post('/api/initiate-payment', async (req, res) => {
