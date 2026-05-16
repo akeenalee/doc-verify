@@ -73,7 +73,7 @@
     <div class="card" id="login-card">
       <h2>Log in to your portal</h2>
       <label>Matric number</label>
-      <input type="text" id="login-matric" placeholder="e.g. 180101001" style="text-transform:uppercase"/>
+      <input type="text" id="login-matric" placeholder="e.g. 180101001"/>
       <label>Institution</label>
       <input type="text" id="login-institution" placeholder="e.g. University of Lagos"/>
       <label>PIN</label>
@@ -88,7 +88,7 @@
       <label>Full name</label>
       <input type="text" id="reg-name" placeholder="Your full name"/>
       <label>Matric number</label>
-      <input type="text" id="reg-matric" placeholder="e.g. 180101001" style="text-transform:uppercase"/>
+      <input type="text" id="reg-matric" placeholder="e.g. 180101001"/>
       <label>Institution</label>
       <input type="text" id="reg-institution" placeholder="e.g. University of Lagos"/>
       <label>Email (optional, for receipts and alerts)</label>
@@ -209,7 +209,7 @@ document.getElementById('show-login').addEventListener('click', () => {
 });
 
 document.getElementById('login-btn').addEventListener('click', async () => {
-  const matric      = document.getElementById('login-matric').value.trim().toUpperCase();
+  const matric      = document.getElementById('login-matric').value.trim();
   const institution = document.getElementById('login-institution').value.trim();
   const pin         = document.getElementById('login-pin').value.trim();
   const errEl       = document.getElementById('login-err');
@@ -234,7 +234,7 @@ document.getElementById('login-btn').addEventListener('click', async () => {
 
 document.getElementById('register-btn').addEventListener('click', async () => {
   const full_name   = document.getElementById('reg-name').value.trim();
-  const matric      = document.getElementById('reg-matric').value.trim().toUpperCase();
+  const matric      = document.getElementById('reg-matric').value.trim();
   const institution = document.getElementById('reg-institution').value.trim();
   const email       = document.getElementById('reg-email').value.trim();
   const phone       = document.getElementById('reg-phone').value.trim();

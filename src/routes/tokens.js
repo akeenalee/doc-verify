@@ -99,7 +99,8 @@ router.get('/log', requireStudentAuth, async (req, res) => {
     if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
 
     const docs = await pool.query(
-      `SELECT doc_id FROM documents WHERE metadata->>'matric_number'=$1`,
+      `SELECT doc_id FROM documents 
+       WHERE LOWER(metadata->>'matric_number') = LOWER($1)`,
       [student.rows[0].matric_number]
     );
     const docIds = docs.rows.map(d => d.doc_id);
