@@ -100,13 +100,32 @@
 
   <div class="card">
     <h2>Verify a document</h2>
-    <label>Document ID</label>
-    <input type="text" id="v-docid" placeholder="DOC-20260430-XXXXXXXX" style="font-family:monospace"/>
-    <button class="btn" id="v-btn">Verify document</button>
-    <p class="err" id="v-error"></p>
-    <div class="result" id="v-result"></div>
+  
+    <div class="tabs" style="display:flex;gap:0;border-bottom:1px solid #eee;margin-bottom:16px">
+      <div class="vtab active" data-vtab="by-id" style="padding:8px 16px;font-size:13px;font-weight:500;color:#1a3a5c;border-bottom:2px solid #1a3a5c;cursor:pointer;margin-bottom:-1px">By Document ID</div>
+      <div class="vtab" data-vtab="by-search" style="padding:8px 16px;font-size:13px;font-weight:500;color:#888;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px">Search by Name / Matric</div>
+    </div>
+  
+    <!-- Tab: By Document ID -->
+    <div id="vtab-by-id" class="vtab-content">
+      <label>Document ID</label>
+      <input type="text" id="v-docid" placeholder="DOC-20260430-XXXXXXXX" style="font-family:monospace"/>
+      <button class="btn" id="v-btn">Verify document</button>
+      <p class="err" id="v-error"></p>
+      <div class="result" id="v-result"></div>
+    </div>
+  
+    <!-- Tab: Search by Name / Matric -->
+    <div id="vtab-by-search" class="vtab-content" style="display:none">
+      <label>Graduate name or matric number</label>
+      <input type="text" id="s-query" placeholder="e.g. Amina Ibrahim or CS/2020/001"/>
+      <label>Institution (optional, to narrow results)</label>
+      <input type="text" id="s-institution" placeholder="e.g. University of Abuja"/>
+      <button class="btn" id="s-btn">Search records</button>
+      <p class="err" id="s-error"></p>
+      <div id="s-results" style="margin-top:16px"></div>
+    </div>
   </div>
-</div>
 
 <div class="card-full">
   <h2>Verification log <button class="refresh-btn" id="refresh-btn">Refresh</button></h2>
@@ -131,6 +150,82 @@
 </div>
 
 <script>
+  // Verify tab switching
+document.querySelectorAll('.vtab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.vtab').forEach(t => {
+      t.style.color = '#888';
+      t.style.borderBottomColor = 'transparent';
+    });
+    document.querySelectorAll('.vtab-content').forEach(c => c.style.display = 'none');
+    tab.style.color = '#1a3a5c';
+    tab.style.borderBottomColor = '#1a3a5c';
+    document.getElementById(`vtab-${tab.dataset.vtab}`).style.display = 'block';
+  });
+});
+
+// Search by name/matric
+document.getElementById('s-btn').addEventListener('click', async () => {
+  const q           = document.getElementById('s-query').value.trim();
+  const institution = document.getElementById('s-institution').value.trim();
+  const errEl       = document.getElementById('s-error');
+  const results     = document.getElementById('s-results');
+  const btn         = document.getElementById('s-btn');
+  errEl.classList.remove('show');
+  results.innerHTML = '';
+
+  if (!q || q.length < 3) {
+    errEl.textContent = 'Please enter at least 3 characters.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Searching...';
+
+  try {
+    const url = `${BASE}/verify/api/search?q=${encodeURIComponent(q)}${institution ? '&institution=' + encodeURIComponent(institution) : ''}`;
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Search failed.');
+
+    if (!data.results.length) {
+      results.innerHTML = '<p style="font-size:13px;color:#888;text-align:center;padding:16px">No records found. Check the name or matric number and try again.</p>';
+      return;
+    }
+
+    results.innerHTML = data.results.map(doc => {
+      const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+      const statusColor = doc.status === 'active' && !isExpired ? '#0f6e56' : '#A32D2D';
+      const statusLabel = doc.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+      return `<div style="border:1px solid #eee;border-radius:10px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <strong style="font-size:14px;color:#111">${esc(doc.title)}</strong>
+          <span style="font-size:11px;font-weight:600;color:${statusColor};background:${doc.status === 'active' && !isExpired ? '#e1f5ee' : '#fcebeb'};padding:3px 8px;border-radius:12px">${statusLabel}</span>
+        </div>
+        <div style="font-size:12px;color:#888;margin-bottom:4px">Issued to: <strong style="color:#333">${esc(doc.issued_to)}</strong></div>
+        <div style="font-size:12px;color:#888;margin-bottom:4px">Issued by: ${esc(doc.issued_by)}</div>
+        <div style="font-size:11px;font-family:monospace;color:#555;margin-bottom:10px">${esc(doc.doc_id)}</div>
+        <a href="${BASE}/verify?doc=${encodeURIComponent(doc.doc_id)}" target="_blank"
+           style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px;display:inline-block">
+          View verify page
+        </a>
+      </div>`;
+    }).join('');
+
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Search records';
+  }
+});
+
+document.getElementById('s-query').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('s-btn').click();
+});
 const BASE = window.location.origin;
 const locCache = {};
 
