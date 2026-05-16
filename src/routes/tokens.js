@@ -99,7 +99,7 @@ router.get('/log', requireStudentAuth, async (req, res) => {
     if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
 
     const docs = await pool.query(
-      `SELECT doc_id FROM documents 
+      `SELECT doc_id FROM documents
        WHERE LOWER(metadata->>'matric_number') = LOWER($1)`,
       [student.rows[0].matric_number]
     );
@@ -208,6 +208,50 @@ router.patch('/notifications', requireStudentAuth, async (req, res) => {
     res.json({ message: 'Notification preferences updated.' });
   } catch (err) {
     res.status(500).json({ error: 'Update failed.' });
+  }
+});
+
+// GET /api/tokens/replacement-pdf/:docId
+router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
+  const { docId } = req.params;
+
+  try {
+    const student = await pool.query(
+      'SELECT matric_number, institution FROM student_tokens WHERE id = $1',
+      [req.session.studentId]
+    );
+    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
+
+    const { matric_number, institution } = student.rows[0];
+
+    const docResult = await pool.query(
+      `SELECT * FROM documents
+       WHERE doc_id = $1
+       AND issued_by ILIKE $2
+       AND LOWER(metadata->>'matric_number') = LOWER($3)`,
+      [docId, `%${institution}%`, matric_number]
+    );
+
+    if (!docResult.rows.length) {
+      return res.status(403).json({ error: 'Document not found or does not belong to your record.' });
+    }
+
+    const docData = docResult.rows[0];
+
+    await pool.query(
+      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
+       VALUES ($1, $2, $3, 'found', 'replacement_pdf')`,
+      [docId, req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, req.headers['user-agent'] || '']
+    );
+
+    const { generatePDF } = require('../utils/pdfGenerator');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${docId}-official.pdf"`);
+    await generatePDF(docData, res);
+
+  } catch (err) {
+    console.error('Replacement PDF error:', err);
+    res.status(500).json({ error: 'Failed to generate replacement PDF.' });
   }
 });
 

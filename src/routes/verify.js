@@ -80,7 +80,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /verify/api/payment-callback - Paystack redirects here after employer payment
+// GET /verify/api/payment-callback
 router.get('/api/payment-callback', async (req, res) => {
   const { reference } = req.query;
   if (!reference) return res.redirect('/pay.html?error=missing_reference');
@@ -104,7 +104,8 @@ router.get('/api/payment-callback', async (req, res) => {
     res.redirect('/pay.html?error=verification_failed');
   }
 });
-// GET /verify/api/logs - admin audit log
+
+// GET /verify/api/logs
 router.get('/api/logs', async (req, res) => {
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 50);
@@ -132,7 +133,8 @@ router.get('/api/logs', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch logs.' });
   }
 });
-// GET /verify/api/search - search by matric number, name, or document ID
+
+// GET /verify/api/search
 router.get('/api/search', async (req, res) => {
   const { q, institution } = req.query;
 
@@ -142,17 +144,16 @@ router.get('/api/search', async (req, res) => {
 
   try {
     const term = q.trim();
-
-    // Search by doc_id, issued_to (name), or matric_number in metadata
     const result = await pool.query(
       `SELECT doc_id, title, issued_to, issued_by, doc_type,
               issue_date, expiry_date, status, metadata
        FROM documents
-       WHERE
+       WHERE (
          doc_id ILIKE $1
          OR issued_to ILIKE $1
          OR metadata->>'matric_number' ILIKE $1
-         ${institution ? 'AND issued_by ILIKE $2' : ''}
+       )
+       ${institution ? 'AND issued_by ILIKE $2' : ''}
        ORDER BY issue_date DESC
        LIMIT 10`,
       institution
@@ -166,7 +167,8 @@ router.get('/api/search', async (req, res) => {
     res.status(500).json({ error: 'Search failed.' });
   }
 });
-// GET /verify/api/:docId - JSON result
+
+// GET /verify/api/:docId - wildcard, must be LAST
 router.get('/api/:docId', async (req, res) => {
   const { docId } = req.params;
   try {
@@ -189,9 +191,7 @@ router.get('/api/:docId', async (req, res) => {
   }
 });
 
-
-
-// POST /verify/api/initiate-payment - employer starts payment
+// POST /verify/api/initiate-payment
 router.post('/api/initiate-payment', async (req, res) => {
   const { doc_id, email } = req.body;
   if (!doc_id || !email) return res.status(400).json({ error: 'doc_id and email required.' });
@@ -319,51 +319,5 @@ function renderPage(pageTitle, message, state, docData) {
 function row(label, value, mono = false) {
   return `<tr><td>${label}</td><td class="${mono ? 'mono' : ''}">${value}</td></tr>`;
 }
-// GET /api/tokens/replacement-pdf/:docId
-// Graduate requests a new official PDF with QR code for a historical document
-router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
-  const { docId } = req.params;
-
-  try {
-    // Verify the document belongs to this student
-    const student = await pool.query(
-      'SELECT matric_number, institution FROM student_tokens WHERE id = $1',
-      [req.session.studentId]
-    );
-    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
-
-    const { matric_number, institution } = student.rows[0];
-
-    const docResult = await pool.query(
-      `SELECT * FROM documents
-       WHERE doc_id = $1
-       AND issued_by ILIKE $2
-       AND LOWER(metadata->>'matric_number') = LOWER($3)`,
-      [docId, `%${institution}%`, matric_number]
-    );
-
-    if (!docResult.rows.length) {
-      return res.status(403).json({ error: 'Document not found or does not belong to your record.' });
-    }
-
-    const docData = docResult.rows[0];
-
-    // Log the replacement PDF request
-    await pool.query(
-      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
-       VALUES ($1, $2, $3, 'found', 'replacement_pdf')`,
-      [docId, req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, req.headers['user-agent'] || '']
-    );
-
-    const { generatePDF } = require('../utils/pdfGenerator');
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${docId}-official.pdf"`);
-    await generatePDF(docData, res);
-
-  } catch (err) {
-    console.error('Replacement PDF error:', err);
-    res.status(500).json({ error: 'Failed to generate replacement PDF.' });
-  }
-});
 
 module.exports = router;
