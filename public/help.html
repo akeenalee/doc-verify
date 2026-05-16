@@ -7,7 +7,7 @@
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;padding:32px 16px;color:#333}
-    .container{max-width:780px;margin:0 auto}
+    .container{max-width:820px;margin:0 auto}
     .header{text-align:center;margin-bottom:36px}
     .header .logo{font-size:28px;font-weight:700;color:#1a3a5c;margin-bottom:6px}
     .header .tagline{font-size:14px;color:#888}
@@ -56,6 +56,15 @@
     .nav-links{display:flex;gap:16px}
     .nav-links a{font-size:13px;color:#666;text-decoration:none}
     .nav-links a:hover{color:#1a3a5c}
+
+    /* Screenshot styles */
+    .screenshot-wrap{margin:20px 0;text-align:center}
+    .screenshot-wrap img{max-width:100%;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.12);border:1px solid #e5e5e5}
+    .screenshot-wrap.mobile img{max-width:300px}
+    .screenshot-caption{font-size:12px;color:#888;font-style:italic;margin-top:8px;line-height:1.5;max-width:600px;margin-left:auto;margin-right:auto}
+    .screenshot-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}
+    @media(max-width:600px){.screenshot-grid{grid-template-columns:1fr}}
+    .screenshot-grid .screenshot-wrap{margin:0}
   </style>
 </head>
 <body>
@@ -84,49 +93,24 @@
   <div class="card">
     <div class="card-header">
       <div style="width:32px;height:32px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;font-size:18px">&#127758;</div>
-      <div>
-        <h2>What is UniVerify?</h2>
-        <div class="desc">A quick overview before you start testing</div>
-      </div>
+      <div><h2>What is UniVerify?</h2><div class="desc">A quick overview before you start testing</div></div>
     </div>
     <p>UniVerify is a document authentication platform for Nigerian universities and institutions. When a university issues a certificate, transcript, or official letter, a unique QR code is embedded on the document. Anyone who scans that QR code can instantly verify the document is genuine.</p>
     <p>This demo is running in <strong>test mode</strong>. No real money moves. You can test the full payment flow using the Paystack test card details provided below.</p>
-    <div class="callout info">
-      <strong>Demo site:</strong> verify.akeenalee.com &nbsp;&middot;&nbsp;
-      <strong>Powered by:</strong> Innovation Lens Resources Ltd
-    </div>
+    <div class="callout info"><strong>Demo site:</strong> verify.akeenalee.com &nbsp;&middot;&nbsp; <strong>Powered by:</strong> Innovation Lens Resources Ltd</div>
   </div>
 
-  <!-- QUICK LINKS -->
+  <!-- KEY PAGES -->
   <div class="card">
     <div class="card-header">
       <div style="width:32px;height:32px;border-radius:50%;background:#e8f0fe;display:flex;align-items:center;justify-content:center;font-size:18px">&#128279;</div>
-      <div>
-        <h2>Key Pages</h2>
-        <div class="desc">All the URLs you need for testing</div>
-      </div>
+      <div><h2>Key Pages</h2><div class="desc">All the URLs you need for testing</div></div>
     </div>
     <div class="link-grid">
-      <a href="/" class="link-card">
-        <div class="lc-title">Admin Dashboard</div>
-        <div class="lc-url">verify.akeenalee.com/</div>
-        <div class="lc-desc">Generate QR codes, verify documents, view audit log</div>
-      </a>
-      <a href="/student.html" class="link-card">
-        <div class="lc-title">Student Portal</div>
-        <div class="lc-url">verify.akeenalee.com/student.html</div>
-        <div class="lc-desc">Register, buy tokens, view your verification history</div>
-      </a>
-      <a href="/pay.html" class="link-card">
-        <div class="lc-title">Employer Payment Page</div>
-        <div class="lc-url">verify.akeenalee.com/pay.html</div>
-        <div class="lc-desc">Shown when a document scan requires payment</div>
-      </a>
-      <a href="/help.html" class="link-card">
-        <div class="lc-title">This Page</div>
-        <div class="lc-url">verify.akeenalee.com/help.html</div>
-        <div class="lc-desc">Test guide and instructions</div>
-      </a>
+      <a href="/" class="link-card"><div class="lc-title">Admin Dashboard</div><div class="lc-url">verify.akeenalee.com/</div><div class="lc-desc">Generate QR codes, verify documents, view audit log</div></a>
+      <a href="/student.html" class="link-card"><div class="lc-title">Student Portal</div><div class="lc-url">verify.akeenalee.com/student.html</div><div class="lc-desc">Register, buy tokens, view verification history</div></a>
+      <a href="/pay.html" class="link-card"><div class="lc-title">Employer Payment Page</div><div class="lc-url">verify.akeenalee.com/pay.html</div><div class="lc-desc">Shown when a document scan requires payment</div></a>
+      <a href="/help.html" class="link-card"><div class="lc-title">This Page</div><div class="lc-url">verify.akeenalee.com/help.html</div><div class="lc-desc">Test guide and instructions</div></a>
     </div>
   </div>
 
@@ -134,149 +118,174 @@
   <div class="card">
     <div class="card-header">
       <div style="width:32px;height:32px;border-radius:50%;background:#faeeda;display:flex;align-items:center;justify-content:center;font-size:18px">&#128179;</div>
-      <div>
-        <h2>Paystack Test Card</h2>
-        <div class="desc">Use these details for all payment steps. No real money is charged.</div>
-      </div>
+      <div><h2>Paystack Test Card</h2><div class="desc">Use these details for all payment steps. No real money is charged.</div></div>
     </div>
     <div class="test-card-box">
       <div class="label">Test Card Details</div>
-      <div class="field">
-        <span>Card Number</span>
-        <span>4084 0840 8408 4081 <button class="copy-btn" onclick="copyText('4084084084084081', this)">Copy</button></span>
-      </div>
-      <div class="field">
-        <span>Expiry Date</span>
-        <span>12/26</span>
-      </div>
-      <div class="field">
-        <span>CVV</span>
-        <span>408</span>
-      </div>
-      <div class="field">
-        <span>OTP (if prompted)</span>
-        <span>123456</span>
-      </div>
-      <div class="field">
-        <span>PIN (if prompted)</span>
-        <span>1234</span>
-      </div>
+      <div class="field"><span>Card Number</span><span>4084 0840 8408 4081 <button class="copy-btn" onclick="copyText('4084084084084081',this)">Copy</button></span></div>
+      <div class="field"><span>Expiry Date</span><span>12/26</span></div>
+      <div class="field"><span>CVV</span><span>408</span></div>
+      <div class="field"><span>OTP (if prompted)</span><span>123456</span></div>
+      <div class="field"><span>PIN (if prompted)</span><span>1234</span></div>
     </div>
     <div class="callout warning">Use these details only on the Paystack checkout page. Never use real card details on a test environment.</div>
   </div>
 
-  <!-- FLOW 1 -->
+  <!-- FLOW 1: GENERATE -->
   <div class="card">
     <div class="card-header">
       <div class="step-num">1</div>
-      <div>
-        <h2>Generate a Document QR Code</h2>
-        <div class="desc">Simulates what a university Registrar does when issuing a certificate</div>
-      </div>
+      <div><h2>Generate a Document QR Code</h2><div class="desc">Simulates what a university Registrar does when issuing a certificate</div></div>
     </div>
     <ol class="steps">
       <li>Go to the <a href="/" style="color:#1a3a5c">Admin Dashboard</a> at <code style="font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:4px">verify.akeenalee.com</code></li>
-      <li>Fill in the <strong>Generate QR code</strong> panel on the left. Example: Title = "B.Sc Computer Science", Issued To = "John Doe", Issued By = "University of Lagos".</li>
-      <li>Optionally set an ID prefix like <strong>UNILAG</strong> to see institution-specific IDs.</li>
-      <li>Click <strong>Generate QR code</strong>. A QR code appears with a unique Document ID.</li>
-      <li>Click <strong>Download PDF</strong> to see the full certificate with the QR code embedded.</li>
-      <li>Note the Document ID (e.g. <code style="font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:4px">UNILAG-20260515-A3F9K2M1</code>). You will need it for the next steps.</li>
+      <li>Fill in the <strong>Generate QR code</strong> panel. Example: Title = "B.Sc Computer Science", Issued To = "Amina Ibrahim", Issued By = "University of Abuja", Prefix = "UNIABJ".</li>
+      <li>Click <strong>Generate QR code</strong>. A QR code appears with a unique Document ID like <code style="font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:4px">UNIABJ-20260516-EE18696D</code>.</li>
+      <li>Click <strong>Download PDF</strong> to see the full certificate PDF with the QR code embedded.</li>
     </ol>
+
+    <div class="screenshot-grid">
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss01_dashboard.png" alt="Admin Dashboard"/>
+        <div class="screenshot-caption">UniVerify Admin Dashboard showing QR generation panel, verification panel, scan statistics, and audit log. Captured live at verify.akeenalee.com on 16 May 2026.</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss02_generate_qr.png" alt="QR Code Generated"/>
+        <div class="screenshot-caption">Registrar fills in certificate details. System instantly generates Document ID (UNIABJ-20260516-EE18696D) and QR code with institution prefix.</div>
+      </div>
+    </div>
+
+    <div class="screenshot-wrap">
+      <img src="/screenshots/ss03_pdf_certificate.png" alt="PDF Certificate"/>
+      <div class="screenshot-caption">Generated degree certificate PDF for Amina Ibrahim, University of Abuja. QR code embedded in top right corner. Footer confirms digital registration at verify.akeenalee.com. Ready for printing or digital issuance.</div>
+    </div>
   </div>
 
-  <!-- FLOW 2 -->
+  <!-- FLOW 2: EMPLOYER -->
   <div class="card">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div>
-        <h2>Verify as an Employer (Paid Flow)</h2>
-        <div class="desc">Simulates what an employer or NYSC sees when they scan the QR code</div>
-      </div>
+      <div><h2>Verify as an Employer (Paid Flow)</h2><div class="desc">Simulates what an employer or NYSC officer sees when they scan the QR code</div></div>
     </div>
     <ol class="steps">
       <li>Take the verify URL from the QR result or construct it: <code style="font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:4px">verify.akeenalee.com/verify?doc=YOUR-DOC-ID</code></li>
-      <li>Open the URL in your browser or scan the QR code with your phone camera.</li>
-      <li>Since no student tokens exist yet, you will be redirected to the <strong>payment page</strong>.</li>
+      <li>Open the URL in your browser or scan the QR code with your phone camera. <strong>No app required.</strong></li>
+      <li>Since no student tokens exist yet, you are redirected to the <strong>payment page</strong> showing the document details and N1,000 fee.</li>
       <li>Enter any email address and click <strong>Pay and Verify</strong>.</li>
-      <li>On the Paystack checkout page, enter the test card details from the box above.</li>
-      <li>After payment you are redirected back and the <strong>Verified Authentic</strong> result is shown.</li>
-      <li>Go back to the Admin Dashboard and check the <strong>Verification log</strong>. Your scan appears with timestamp, location, and payment method.</li>
+      <li>On the Paystack checkout page, use the test card details above.</li>
+      <li>After payment you are redirected back and the <strong>Verified Authentic</strong> result is shown immediately.</li>
     </ol>
-    <div class="callout success">This replaces the WAEC/NECO scratch card with instant digital payment. No scratch card, no bank branch, no USSD code.</div>
+
+    <div class="screenshot-grid">
+      <div class="screenshot-wrap mobile">
+        <img src="/screenshots/ss05_mobile_payment.png" alt="Mobile Payment Page"/>
+        <div class="screenshot-caption">Employer scans QR on smartphone. Payment page opens automatically showing document details and N1,000 one-time fee. No app required.</div>
+      </div>
+      <div class="screenshot-wrap mobile">
+        <img src="/screenshots/ss06_paystack_checkout.png" alt="Paystack Checkout"/>
+        <div class="screenshot-caption">Secure Paystack checkout on mobile. Payment options: card, bank transfer, bank, and USSD. Secured by Paystack.</div>
+      </div>
+    </div>
+
+    <div class="screenshot-wrap mobile" style="text-align:center">
+      <img src="/screenshots/ss08_verified_mobile.png" alt="Verified on Mobile" style="max-width:300px"/>
+      <div class="screenshot-caption">Document verified on mobile after payment. Green Verified Authentic badge with full certificate details: Document ID, title, graduate name, issuing university, document type, issue date, and exact verification timestamp (16/05/2026, 14:19:32).</div>
+    </div>
+
+    <div class="callout success">This replaces the WAEC/NECO scratch card with instant digital payment. No scratch card, no bank branch, no USSD code to memorise. Payment completed on any smartphone in under 60 seconds.</div>
   </div>
 
-  <!-- FLOW 3 -->
+  <!-- FLOW 3: STUDENT -->
   <div class="card">
     <div class="card-header">
       <div class="step-num">3</div>
-      <div>
-        <h2>Register as a Student and Buy Tokens</h2>
-        <div class="desc">Simulates what a graduate does before sharing their certificate with employers</div>
-      </div>
+      <div><h2>Register as a Student and Buy Tokens</h2><div class="desc">Simulates what a graduate does before sharing their certificate with employers</div></div>
     </div>
     <ol class="steps">
       <li>Go to the <a href="/student.html" style="color:#1a3a5c">Student Portal</a> at <code style="font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:4px">verify.akeenalee.com/student.html</code></li>
       <li>Click <strong>Register here</strong> and fill in your matric number, institution, and a 4-8 digit PIN.</li>
-      <li>After registering you will see your portal showing <strong>0 tokens</strong>.</li>
-      <li>Click the <strong>Buy tokens</strong> tab and select a bundle.</li>
+      <li>After registering you see your portal showing <strong>0 tokens</strong>.</li>
+      <li>Click the <strong>Buy tokens</strong> tab and select a bundle (e.g. 3 verifications for N2,500).</li>
       <li>Enter an email for your receipt and click <strong>Proceed to payment</strong>.</li>
-      <li>Use the test card details to complete payment on Paystack.</li>
-      <li>You are redirected back. Your token balance updates immediately.</li>
+      <li>Use the test card to complete payment. Token balance updates immediately.</li>
     </ol>
+
+    <div class="screenshot-grid">
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss09a_student_register.png" alt="Student Registration"/>
+        <div class="screenshot-caption">Graduate Amina Ibrahim registers on the UniVerify Student Portal. In a live institutional deployment, student accounts are pre-created from the university's student records system so graduates never need to register manually.</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss09b_portal_dashboard.png" alt="Student Portal Dashboard"/>
+        <div class="screenshot-caption">Student portal for Amina Ibrahim showing 0 tokens after registration. Tabs for verification log, token purchase, and settings.</div>
+      </div>
+    </div>
+
+    <div class="screenshot-grid">
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss09c_token_bundles.png" alt="Token Bundles"/>
+        <div class="screenshot-caption">Four token bundle options: 1 verification at N1,000, 3 at N2,500 (save N500), 5 at N4,000 (save N1,000), 10 at N7,000 (save N3,000). Prices set by the institution.</div>
+      </div>
+      <div class="screenshot-wrap">
+        <img src="/screenshots/ss09d_tokens_credited.png" alt="Tokens Credited"/>
+        <div class="screenshot-caption">Token balance updated to 3 immediately after successful Paystack payment. Graduate now has 3 verifications available for employers to use.</div>
+      </div>
+    </div>
   </div>
 
-  <!-- FLOW 4 -->
+  <!-- FLOW 4: TOKEN VERIFY -->
   <div class="card">
     <div class="card-header">
       <div class="step-num">4</div>
-      <div>
-        <h2>Verify Using a Student Token</h2>
-        <div class="desc">When a student has tokens, verification is instant with no payment page</div>
-      </div>
+      <div><h2>Instant Verification Using a Student Token</h2><div class="desc">When a student has tokens, employer verification is instant with no payment page</div></div>
     </div>
-    <div class="callout info" style="margin-bottom:16px">To link a document to your student record, the document must be generated with your matric number in the metadata field when creating the document via API.</div>
+    <div class="callout info" style="margin-bottom:16px">To link a document to a student record, the document must be created with the student's matric number in the metadata field. In a live deployment this happens automatically at the point of document issuance from the student information system.</div>
     <ol class="steps">
       <li>Make sure you are logged into the Student Portal with at least 1 token.</li>
-      <li>Visit the verify URL for your document.</li>
-      <li>The system checks your token balance first. One token is deducted and the verified result is shown immediately with no payment page.</li>
-      <li>Go to your Student Portal and click the <strong>Verification log</strong> tab to see the scan logged.</li>
+      <li>Visit the verify URL for a document linked to your matric number.</li>
+      <li>The system checks your token balance. One token is deducted and the verified result is shown <strong>immediately</strong> with no payment page.</li>
+      <li>Go to your Student Portal and check the <strong>Verification log</strong> tab to see the scan recorded.</li>
     </ol>
+
+    <div class="screenshot-wrap">
+      <img src="/screenshots/ss10a_instant_verified.png" alt="Instant Verified"/>
+      <div class="screenshot-caption">Document verified instantly with no payment page when student has tokens. The system deducts one token automatically and displays the verified result in under one second. In a live institutional deployment, the institution name on the document and the student portal always match automatically since both are configured from the same system.</div>
+    </div>
   </div>
 
-  <!-- FLOW 5 -->
+  <!-- FLOW 5: AUDIT LOG -->
   <div class="card">
     <div class="card-header">
       <div class="step-num">5</div>
-      <div>
-        <h2>View the Audit Log</h2>
-        <div class="desc">Every scan is logged. The institution sees everything.</div>
-      </div>
+      <div><h2>View the Audit Log</h2><div class="desc">Every scan is logged. The institution sees everything.</div></div>
     </div>
     <ol class="steps">
       <li>Go to the <a href="/" style="color:#1a3a5c">Admin Dashboard</a>.</li>
       <li>Scroll down to the <strong>Verification log</strong> table.</li>
-      <li>Every scan appears with document name, result, payment method, IP address, location, device type, and exact timestamp.</li>
+      <li>Every scan appears with document name, result badge, IP address, geographic location, device type, and exact timestamp.</li>
       <li>Click <strong>Refresh</strong> to pull the latest entries. The log auto-refreshes every 30 seconds.</li>
-      <li>The three stat cards at the top show total scans, scans today, and total documents registered.</li>
     </ol>
-    <div class="callout success">The institution sees every employer who checked a document, from which country, on which device, and whether they paid or used a student token.</div>
+
+    <div class="screenshot-wrap">
+      <img src="/screenshots/ss10b_audit_log.png" alt="Audit Log"/>
+      <div class="screenshot-caption">UniVerify admin audit log showing verification scans across multiple documents. Each entry shows: document name, graduate name, Document ID, verified badge, IP address, geographic location, device type (Android, iPhone, Windows), and exact date and time. The institution has a permanent immutable record of every verification event.</div>
+    </div>
+
+    <div class="callout success">The institution sees every employer who checked a document, from which country, on which device, and how they paid. Full visibility, full control.</div>
   </div>
 
   <!-- API -->
   <div class="card">
     <div class="card-header">
       <div style="width:32px;height:32px;border-radius:50%;background:#f0f2f5;display:flex;align-items:center;justify-content:center;font-size:16px;font-family:monospace;font-weight:700;color:#555">{}</div>
-      <div>
-        <h2>API Quick Reference</h2>
-        <div class="desc">For developers integrating UniVerify with an existing student system</div>
-      </div>
+      <div><h2>API Quick Reference</h2><div class="desc">For developers integrating UniVerify with an existing student system</div></div>
     </div>
     <table class="info-table">
       <tr><td>Create document</td><td>POST /api/documents</td></tr>
       <tr><td>Get QR as PNG</td><td>GET /api/documents/:id/qr</td></tr>
       <tr><td>Download PDF</td><td>GET /api/documents/:id/pdf</td></tr>
       <tr><td>Revoke document</td><td>PATCH /api/documents/:id/revoke</td></tr>
-      <tr><td>Verify (public HTML)</td><td>GET /verify?doc=:id</td></tr>
+      <tr><td>Verify (HTML)</td><td>GET /verify?doc=:id</td></tr>
       <tr><td>Verify (JSON)</td><td>GET /verify/api/:id</td></tr>
       <tr><td>Audit log</td><td>GET /verify/api/logs</td></tr>
       <tr><td>Student register</td><td>POST /api/tokens/register</td></tr>
@@ -291,10 +300,7 @@
   <div class="card">
     <div class="card-header">
       <div style="width:32px;height:32px;border-radius:50%;background:#e1f5ee;display:flex;align-items:center;justify-content:center;font-size:18px">&#128222;</div>
-      <div>
-        <h2>Questions or Demo Request</h2>
-        <div class="desc">Ready to deploy UniVerify for your institution?</div>
-      </div>
+      <div><h2>Questions or Demo Request</h2><div class="desc">Ready to deploy UniVerify for your institution?</div></div>
     </div>
     <p>This is a live demo of a production-ready platform. If you are a university, polytechnic, or college of education interested in deploying UniVerify, contact Innovation Lens Resources Ltd.</p>
     <table class="info-table">
@@ -303,13 +309,12 @@
       <tr><td>Email</td><td>info@akeenalee.com</td></tr>
       <tr><td>Platform</td><td><a href="https://verify.akeenalee.com" style="color:#1a3a5c">verify.akeenalee.com</a></td></tr>
     </table>
-    <div class="callout success" style="margin-top:16px">&#127881; Pilot offer: 90-day deployment at N250,000 all-inclusive. Verification revenue starts flowing from day one.</div>
+    <div class="callout success" style="margin-top:16px">&#127881; Pilot offer: 90-day deployment at N2,500,000 all-inclusive. Verification revenue starts flowing from day one.</div>
   </div>
 
   <p style="text-align:center;font-size:12px;color:#bbb;margin-top:8px;padding-bottom:32px">
     UniVerify &middot; Powered by Innovation Lens Resources Ltd &middot; verify.akeenalee.com
   </p>
-
 </div>
 
 <script>

@@ -62,6 +62,7 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error.' });
 });
+app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
 
 app.listen(PORT, () => {
   console.log(`UniVerify running on http://localhost:${PORT}`);
