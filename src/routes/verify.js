@@ -137,11 +137,9 @@ router.get('/api/logs', async (req, res) => {
 // GET /verify/api/search
 router.get('/api/search', async (req, res) => {
   const { q, institution } = req.query;
-
   if (!q || q.trim().length < 3) {
     return res.status(400).json({ error: 'Search query must be at least 3 characters.' });
   }
-
   try {
     const term = q.trim();
     const result = await pool.query(
@@ -156,15 +154,35 @@ router.get('/api/search', async (req, res) => {
        ${institution ? 'AND issued_by ILIKE $2' : ''}
        ORDER BY issue_date DESC
        LIMIT 10`,
-      institution
-        ? [`%${term}%`, `%${institution.trim()}%`]
-        : [`%${term}%`]
+      institution ? [`%${term}%`, `%${institution.trim()}%`] : [`%${term}%`]
     );
-
     res.json({ results: result.rows, total: result.rows.length });
   } catch (err) {
     console.error('Search error:', err);
     res.status(500).json({ error: 'Search failed.' });
+  }
+});
+
+// GET /verify/doc-preview/:docId - serves PDF inline for embedding on verify page
+router.get('/doc-preview/:docId', async (req, res) => {
+  const { docId } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM documents WHERE doc_id = $1',
+      [docId]
+    );
+    if (!result.rows.length) return res.status(404).send('Document not found');
+
+    const docData = result.rows[0];
+    const { generatePDF } = require('../utils/pdfGenerator');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    await generatePDF(docData, res);
+  } catch (err) {
+    console.error('Doc preview error:', err);
+    res.status(500).send('Failed to load document');
   }
 });
 
@@ -270,7 +288,7 @@ function renderPage(pageTitle, message, state, docData) {
   const s = states[state] || states.error;
 
   const docFields = docData ? `
-    <table style="width:100%;border-collapse:collapse;margin-top:24px;">
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
       ${row('Document ID', escHtml(docData.doc_id), true)}
       ${row('Title', escHtml(docData.title))}
       ${row('Issued To', escHtml(docData.issued_to))}
@@ -281,6 +299,32 @@ function renderPage(pageTitle, message, state, docData) {
     </table>
   ` : `<p style="color:#666;margin:16px 0 0;">${message || ''}</p>`;
 
+  const showPreview = docData && state === 'verified';
+
+  const documentPreview = showPreview ? `
+    <div style="margin-top:28px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <p style="font-size:13px;font-weight:600;color:#1a3a5c;margin:0;">Official Document</p>
+        <a href="/verify/doc-preview/${escHtml(docData.doc_id)}"
+           download="${escHtml(docData.doc_id)}.pdf"
+           style="font-size:12px;color:#1a3a5c;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px;">
+          &#8681; Download PDF
+        </a>
+      </div>
+      <div style="border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#f8f9fa;">
+        <iframe
+          src="/verify/doc-preview/${escHtml(docData.doc_id)}"
+          style="width:100%;height:520px;border:none;display:block;"
+          title="Official Document">
+        </iframe>
+      </div>
+      <p style="font-size:11px;color:#aaa;margin-top:8px;text-align:center;">
+        This is the official document as issued by ${escHtml(docData.issued_by)}.
+        If the PDF does not display, click Download PDF above.
+      </p>
+    </div>
+  ` : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -289,17 +333,17 @@ function renderPage(pageTitle, message, state, docData) {
   <title>${escHtml(pageTitle)}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-    .card{background:#fff;border-radius:16px;max-width:520px;width:100%;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.08)}
-    .badge{display:inline-flex;align-items:center;gap:8px;background:${s.bg};color:${s.color};border:1px solid ${s.border};border-radius:32px;padding:8px 20px;font-size:15px;font-weight:600;margin-bottom:20px}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px}
+    .card{background:#fff;border-radius:16px;max-width:680px;width:100%;padding:36px;box-shadow:0 4px 24px rgba(0,0,0,0.08);margin:auto}
+    .badge{display:inline-flex;align-items:center;gap:8px;background:${s.bg};color:${s.color};border:1px solid ${s.border};border-radius:32px;padding:8px 20px;font-size:15px;font-weight:600;margin-bottom:16px}
     .icon{width:32px;height:32px;border-radius:50%;background:${s.color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
     h1{font-size:22px;color:#111;margin-bottom:4px}
     .sub{font-size:14px;color:#888}
-    table td{padding:10px 0;font-size:14px;border-bottom:1px solid #f0f0f0;vertical-align:top}
-    table td:first-child{color:#888;width:130px;padding-right:12px}
+    table td{padding:8px 0;font-size:13px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+    table td:first-child{color:#888;width:120px;padding-right:12px}
     table td:last-child{color:#111;font-weight:500}
-    .mono{font-family:monospace;font-size:13px;letter-spacing:0.5px}
-    .footer{margin-top:28px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#aaa;text-align:center}
+    .mono{font-family:monospace;font-size:12px;letter-spacing:0.5px}
+    .footer{margin-top:24px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#aaa;text-align:center}
   </style>
 </head>
 <body>
@@ -308,6 +352,7 @@ function renderPage(pageTitle, message, state, docData) {
     <h1>${escHtml(pageTitle)}</h1>
     <p class="sub">Document verification result</p>
     ${docFields}
+    ${documentPreview}
     <div class="footer">
       Verified on ${new Date().toLocaleString('en-GB')} &middot; Powered by UniVerify
     </div>
