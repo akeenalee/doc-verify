@@ -19,12 +19,13 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'"],
-      styleSrc:   ["'self'", "'unsafe-inline'"],
-      connectSrc: ["'self'", "https://ip-api.com"],
-      imgSrc:     ["'self'", "data:"],
-      frameSrc:   ["'self'", "https://checkout.paystack.com"],
+      defaultSrc:    ["'self'"],
+      scriptSrc:     ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc:      ["'self'", "'unsafe-inline'"],
+      connectSrc:    ["'self'", "https://ip-api.com"],
+      imgSrc:        ["'self'", "data:"],
+      frameSrc:      ["'self'", "https://checkout.paystack.com"],
     },
   },
 }));
@@ -52,7 +53,7 @@ app.use(session({
 // Demo auth routes
 app.use('/demo', demoRouter);
 
-// Static files - skip protected files so they go through auth middleware below
+// Static files - skip protected files so they hit auth middleware below
 app.use((req, res, next) => {
   const blocked = ['/', '/index.html', '/help.html'];
   if (blocked.includes(req.path)) return next();
@@ -60,7 +61,7 @@ app.use((req, res, next) => {
 });
 app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
 
-// Protected pages
+// Protected pages - require demo login
 app.get('/', requireDemoAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/index.html'))
 );
@@ -71,16 +72,18 @@ app.get('/help.html', requireDemoAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/help.html'))
 );
 
-// Public pages
-app.get('/student', (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));
-app.get('/pay',     (req, res) => res.sendFile(path.join(__dirname, '../public/pay.html')));
+// Public pages - no login needed
+app.get('/student',      (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));
+app.get('/student.html', (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));
+app.get('/pay',          (req, res) => res.sendFile(path.join(__dirname, '../public/pay.html')));
+app.get('/pay.html',     (req, res) => res.sendFile(path.join(__dirname, '../public/pay.html')));
 
 // API routes
 app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensRouter);
 
-// Health check
+// Health check - public, needed for UptimeRobot
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
