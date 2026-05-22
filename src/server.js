@@ -10,28 +10,10 @@ const verifyRouter    = require('./routes/verify');
 const tokensRouter    = require('./routes/tokens');
 const webhookRouter   = require('./routes/webhook');
 const demoRouter      = require('./routes/demo');
+const adminRouter     = require('./routes/admin');
 const { verifyLimiter, createLimiter } = require('./middleware/rateLimiter');
-const { requireDemoAuth } = require('./middleware/demoAuth');
-
-const adminRouter = require('./routes/admin');
+const { requireDemoAuth }  = require('./middleware/demoAuth');
 const { requireAdminAuth } = require('./middleware/adminAuth');
-
-// Admin routes
-app.use('/admin-api', adminRouter);
-
-// Admin pages - protected by admin auth (separate from demo auth)
-app.use((req, res, next) => {
-  const adminBlocked = ['/admin', '/admin.html', '/admin-login.html'];
-  // admin-login.html serves freely, /admin requires auth
-  if (req.path === '/admin' || req.path === '/admin/') {
-    return requireAdminAuth(req, res, next);
-  }
-  next();
-});
-
-app.get('/admin', requireAdminAuth, (req, res) =>
-  res.sendFile(path.join(__dirname, '../public/admin.html'))
-);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -73,19 +55,16 @@ app.use(session({
 // Demo auth routes
 app.use('/demo', demoRouter);
 
-// Static files - skip protected files so they hit auth middleware below
-app.use((req, res, next) => {
-  const blocked = ['/', '/index.html', '/help.html'];
-  if (blocked.includes(req.path)) return next();
-  express.static(path.join(__dirname, '../public'))(req, res, next);
-});
-app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
+// Admin API routes
+app.use('/admin-api', adminRouter);
 
+// Static files - skip protected files so they hit auth middleware below
 app.use((req, res, next) => {
   const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html'];
   if (blocked.includes(req.path)) return next();
   express.static(path.join(__dirname, '../public'))(req, res, next);
 });
+app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
 
 // Protected pages - require demo login
 app.get('/', requireDemoAuth, (req, res) =>
@@ -96,6 +75,17 @@ app.get('/index.html', requireDemoAuth, (req, res) =>
 );
 app.get('/help.html', requireDemoAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/help.html'))
+);
+
+// Admin pages - protected by separate admin auth
+app.get('/admin', requireAdminAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/admin.html'))
+);
+app.get('/admin.html', requireAdminAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/admin.html'))
+);
+app.get('/admin-login.html', (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/admin-login.html'))
 );
 
 // Public pages - no login needed
