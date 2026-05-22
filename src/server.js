@@ -49,22 +49,29 @@ app.use(session({
   },
 }));
 
-// Demo auth routes (must be before static files and protected routes)
+// Demo auth routes
 app.use('/demo', demoRouter);
 
-// Static files (demo-login.html is served freely from here)
-app.use(express.static(path.join(__dirname, '../public')));
+// Static files - skip protected files so they go through auth middleware below
+app.use((req, res, next) => {
+  const blocked = ['/', '/index.html', '/help.html'];
+  if (blocked.includes(req.path)) return next();
+  express.static(path.join(__dirname, '../public'))(req, res, next);
+});
 app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
 
-// Protected pages - require demo login
+// Protected pages
 app.get('/', requireDemoAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/index.html'))
+);
+app.get('/index.html', requireDemoAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/index.html'))
 );
 app.get('/help.html', requireDemoAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/help.html'))
 );
 
-// Public pages - no login needed
+// Public pages
 app.get('/student', (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));
 app.get('/pay',     (req, res) => res.sendFile(path.join(__dirname, '../public/pay.html')));
 
@@ -73,7 +80,7 @@ app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensRouter);
 
-// Health check (public - needed for UptimeRobot)
+// Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
