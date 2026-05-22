@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UniVerify Demo Access</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0D2137;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:#fff;border-radius:16px;max-width:440px;width:100%;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+    .logo{font-size:28px;font-weight:700;color:#1A3A5C;margin-bottom:4px}
+    .logo span{color:#B8860B}
+    .tagline{font-size:13px;color:#888;margin-bottom:28px}
+    .divider{border:none;border-top:1px solid #eee;margin:20px 0}
+    label{display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px}
+    input{width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;color:#333;margin-bottom:16px;transition:border 0.2s}
+    input:focus{outline:none;border-color:#1A3A5C}
+    .btn{width:100%;padding:12px;background:#1A3A5C;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px}
+    .btn:hover{background:#0D2137}
+    .btn:disabled{background:#aaa;cursor:not-allowed}
+    .err{font-size:13px;color:#c0392b;margin-top:8px;display:none}
+    .err.show{display:block}
+    .section-title{font-size:11px;font-weight:700;color:#B8860B;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+    .note{font-size:11px;color:#aaa;text-align:center;margin-top:20px;line-height:1.6}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Uni<span>Verify</span></div>
+  <div class="tagline">Africa's Trusted Academic Credential Infrastructure</div>
+
+  <div class="section-title">Your Details</div>
+  <label>Full Name</label>
+  <input type="text" id="full_name" placeholder="Dr. Emeka Obi"/>
+  <label>Email Address</label>
+  <input type="email" id="email" placeholder="emeka@university.edu.ng"/>
+  <label>Institution / Company</label>
+  <input type="text" id="company" placeholder="University of Lagos"/>
+  <label>Your Role</label>
+  <input type="text" id="role" placeholder="Registrar / ICT Director / VC"/>
+
+  <hr class="divider"/>
+
+  <div class="section-title">Demo Access</div>
+  <label>Username</label>
+  <input type="text" id="username" placeholder="Demo username" autocomplete="username"/>
+  <label>Password</label>
+  <input type="password" id="password" placeholder="Demo password" autocomplete="current-password"/>
+
+  <button class="btn" id="login-btn" onclick="doLogin()">Access Demo Platform</button>
+  <p class="err" id="err-msg">Invalid credentials.</p>
+
+  <p class="note">
+    This is a live demo of UniVerify.<br/>
+    Contact <strong>info@akeenalee.com</strong> to request demo credentials.
+  </p>
+</div>
+<script>
+  const redirect = new URLSearchParams(window.location.search).get('redirect') || '/';
+
+  async function doLogin() {
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('err-msg');
+    err.classList.remove('show');
+
+    const body = {
+      full_name: document.getElementById('full_name').value.trim(),
+      email:     document.getElementById('email').value.trim(),
+      company:   document.getElementById('company').value.trim(),
+      role:      document.getElementById('role').value.trim(),
+      username:  document.getElementById('username').value.trim(),
+      password:  document.getElementById('password').value,
+    };
+
+    if (!body.username || !body.password) {
+      err.textContent = 'Please enter your username and password.';
+      err.classList.add('show');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Verifying...';
+
+    try {
+      const res  = await fetch('/demo/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        window.location.href = redirect;
+      } else {
+        err.textContent = data.error || 'Invalid credentials.';
+        err.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Access Demo Platform';
+      }
+    } catch (e) {
+      err.textContent = 'Network error. Please try again.';
+      err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Access Demo Platform';
+    }
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>

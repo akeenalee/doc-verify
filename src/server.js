@@ -9,7 +9,9 @@ const documentsRouter = require('./routes/documents');
 const verifyRouter    = require('./routes/verify');
 const tokensRouter    = require('./routes/tokens');
 const webhookRouter   = require('./routes/webhook');
+const demoRouter      = require('./routes/demo');
 const { verifyLimiter, createLimiter } = require('./middleware/rateLimiter');
+const { requireDemoAuth } = require('./middleware/demoAuth');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -47,22 +49,38 @@ app.use(session({
   },
 }));
 
+// Demo auth routes (must be before static files and protected routes)
+app.use('/demo', demoRouter);
+
+// Static files (demo-login.html is served freely from here)
 app.use(express.static(path.join(__dirname, '../public')));
-app.get('/',        (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
+
+// Protected pages - require demo login
+app.get('/', requireDemoAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/index.html'))
+);
+app.get('/help.html', requireDemoAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/help.html'))
+);
+
+// Public pages - no login needed
 app.get('/student', (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));
 app.get('/pay',     (req, res) => res.sendFile(path.join(__dirname, '../public/pay.html')));
 
+// API routes
 app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensRouter);
 
+// Health check (public - needed for UptimeRobot)
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
+
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error.' });
 });
-app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
 
 app.listen(PORT, () => {
   console.log(`UniVerify running on http://localhost:${PORT}`);
