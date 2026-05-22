@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UniVerify - Innovation Lens Admin</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0D2137;min-height:100vh;padding:0}
+    .topnav{background:#0A1929;padding:14px 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1A3A5C}
+    .topnav .brand{font-size:16px;font-weight:700;color:#fff}
+    .topnav .brand span{color:#B8860B}
+    .topnav .right{display:flex;align-items:center;gap:16px}
+    .topnav .tag{font-size:11px;color:#8AADCC;background:#1A3A5C;padding:3px 10px;border-radius:10px;font-weight:600;letter-spacing:0.5px}
+    .logout-btn{font-size:12px;color:#8AADCC;background:none;border:1px solid #1A3A5C;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:inherit}
+    .logout-btn:hover{border-color:#8AADCC;color:#fff}
+    .container{max-width:1100px;margin:0 auto;padding:28px 20px}
+    .stats-row{display:flex;gap:16px;margin-bottom:28px;flex-wrap:wrap}
+    .stat-box{background:#0A1929;border:1px solid #1A3A5C;border-radius:12px;padding:16px 24px;min-width:160px;flex:1}
+    .stat-box .val{font-size:32px;font-weight:700;color:#B8860B}
+    .stat-box .lbl{font-size:11px;color:#8AADCC;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px}
+    .panel{background:#0A1929;border:1px solid #1A3A5C;border-radius:14px;padding:24px;margin-bottom:24px}
+    .panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid #1A3A5C;flex-wrap:wrap;gap:10px}
+    .panel-header h2{font-size:15px;color:#fff;font-weight:600}
+    .panel-header .sub{font-size:12px;color:#8AADCC;margin-top:3px}
+    .tab-row{display:flex;gap:8px}
+    .tab-btn{font-size:12px;padding:6px 16px;border-radius:20px;border:1.5px solid #1A3A5C;background:transparent;color:#8AADCC;cursor:pointer;font-family:inherit;transition:all 0.2s}
+    .tab-btn.active{background:#1A3A5C;color:#fff;border-color:#1A3A5C}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+    @media(max-width:600px){.form-row{grid-template-columns:1fr}}
+    .form-group{display:flex;flex-direction:column;gap:5px}
+    .form-group label{font-size:11px;color:#8AADCC;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+    .form-group input,.form-group select,.form-group textarea{
+      padding:9px 12px;background:#061525;border:1.5px solid #1A3A5C;border-radius:8px;
+      font-size:13px;color:#fff;font-family:inherit;outline:none;transition:border 0.2s
+    }
+    .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#B8860B}
+    .form-group textarea{resize:vertical;min-height:60px}
+    .form-group select option{background:#061525}
+    .create-btn{padding:10px 24px;background:#B8860B;color:#0A1929;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background 0.2s}
+    .create-btn:hover{background:#D4A017}
+    .create-btn:disabled{background:#555;color:#888;cursor:not-allowed}
+    .table{width:100%;border-collapse:collapse;font-size:13px}
+    .table th{text-align:left;padding:8px 12px;color:#8AADCC;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #1A3A5C}
+    .table td{padding:11px 12px;border-bottom:1px solid #0D2137;vertical-align:top;color:#ccc}
+    .table tr:last-child td{border-bottom:none}
+    .table tr:hover td{background:rgba(26,58,92,0.3)}
+    .token-pill{font-family:monospace;font-size:11px;background:#061525;border:1px solid #1A3A5C;padding:3px 8px;border-radius:4px;color:#8AADCC;cursor:pointer;user-select:all}
+    .token-pill:hover{border-color:#B8860B;color:#B8860B}
+    .link-pill{font-size:11px;background:#061525;border:1px solid #0A6B45;padding:3px 8px;border-radius:4px;color:#4CAF7D;cursor:pointer;user-select:all;display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+    .link-pill:hover{border-color:#4CAF7D}
+    .status-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
+    .status-badge.active{background:#0A6B45;color:#e1f5ee}
+    .status-badge.inactive{background:#5A1A1A;color:#f5c6c6}
+    .status-badge.expired{background:#5A4A00;color:#FAC775}
+    .action-btn{font-size:11px;padding:4px 10px;border-radius:5px;border:none;cursor:pointer;font-family:inherit;font-weight:600;transition:all 0.2s}
+    .action-btn.revoke{background:#5A1A1A;color:#f5c6c6}
+    .action-btn.revoke:hover{background:#8B0000;color:#fff}
+    .action-btn.activate{background:#0A6B45;color:#e1f5ee}
+    .action-btn.activate:hover{background:#0f6e56;color:#fff}
+    .action-btn.delete{background:#2A1A2A;color:#aaa}
+    .action-btn.delete:hover{background:#5A1A5A;color:#f5c6c6}
+    .action-btn.copy{background:#1A3A5C;color:#8AADCC}
+    .action-btn.copy:hover{background:#2A4A6C;color:#fff}
+    .empty{text-align:center;padding:32px;color:#555;font-size:13px}
+    .scroll{overflow-x:auto}
+    .notice{font-size:12px;color:#8AADCC;background:#061525;border:1px solid #1A3A5C;border-radius:8px;padding:10px 14px;margin-bottom:16px;line-height:1.6}
+    .err{font-size:12px;color:#f5c6c6;margin-top:8px;display:none}
+    .err.show{display:block}
+    .success-toast{position:fixed;bottom:24px;right:24px;background:#0A6B45;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:none;z-index:999}
+    .success-toast.show{display:block;animation:fadeIn 0.3s}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .uses-bar{background:#0D2137;border-radius:4px;height:6px;margin-top:4px;overflow:hidden}
+    .uses-fill{background:#B8860B;height:100%;border-radius:4px;transition:width 0.3s}
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="brand">Uni<span>Verify</span> <span class="tag">ADMIN PANEL</span></div>
+  <div class="right">
+    <span style="font-size:12px;color:#8AADCC">Innovation Lens Resources Ltd</span>
+    <button class="logout-btn" id="logout-btn">Log out</button>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-box"><div class="val" id="s-visitors">—</div><div class="lbl">Demo Visitors</div></div>
+    <div class="stat-box"><div class="val" id="s-tokens">—</div><div class="lbl">Active Tokens</div></div>
+    <div class="stat-box"><div class="val" id="s-scans">—</div><div class="lbl">Total Verifications</div></div>
+    <div class="stat-box"><div class="val" id="s-today">—</div><div class="lbl">Visitors Today</div></div>
+  </div>
+
+  <!-- TABS -->
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <button class="tab-btn active" id="tab-tokens-btn">Demo Tokens</button>
+    <button class="tab-btn" id="tab-visitors-btn">All Visitors</button>
+  </div>
+
+  <!-- TOKENS PANEL -->
+  <div id="panel-tokens">
+
+    <!-- Create token form -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Create Demo Access Token</h2>
+          <div class="sub">Generate a unique link for a specific prospect. They click it and go straight into the demo.</div>
+        </div>
+      </div>
+
+      <div class="notice">
+        The generated link looks like: <strong>https://verify.akeenalee.com/demo/access?token=abc123...</strong><br/>
+        Send it directly to the prospect. They never need a username or password.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Label (internal reference)</label>
+          <input type="text" id="f-label" placeholder="e.g. UNILAG Meeting May 2026"/>
+        </div>
+        <div class="form-group">
+          <label>Prospect Name</label>
+          <input type="text" id="f-name" placeholder="Dr. Emeka Obi"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="f-email" placeholder="emeka@unilag.edu.ng"/>
+        </div>
+        <div class="form-group">
+          <label>Institution / Company</label>
+          <input type="text" id="f-company" placeholder="University of Lagos"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role</label>
+          <input type="text" id="f-role" placeholder="Registrar / ICT Director / VC"/>
+        </div>
+        <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group">
+            <label>Expires in (days)</label>
+            <select id="f-expires">
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">90 days</option>
+              <option value="0">Never</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max uses (0 = unlimited)</label>
+            <input type="number" id="f-maxuses" placeholder="0" min="0" value="0"/>
+          </div>
+        </div>
+      </div>
+      <div class="form-row" style="grid-template-columns:1fr">
+        <div class="form-group">
+          <label>Notes (internal)</label>
+          <textarea id="f-notes" placeholder="e.g. Met at NUGA conference, very interested in pilot..."></textarea>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:4px">
+        <button class="create-btn" id="create-btn">Generate Token & Link</button>
+        <p class="err" id="create-err"></p>
+      </div>
+
+      <!-- Generated link display -->
+      <div id="generated-wrap" style="display:none;margin-top:20px;padding:16px;background:#061525;border:1px solid #0A6B45;border-radius:10px">
+        <div style="font-size:12px;color:#4CAF7D;font-weight:700;margin-bottom:8px">✓ Token created. Copy and send this link:</div>
+        <div id="generated-link" style="font-family:monospace;font-size:13px;color:#fff;word-break:break-all;margin-bottom:12px"></div>
+        <button class="action-btn copy" id="copy-link-btn">Copy Link</button>
+      </div>
+    </div>
+
+    <!-- Token list -->
+    <div class="panel">
+      <div class="panel-header">
+        <div><h2>All Tokens</h2></div>
+        <button class="tab-btn" id="refresh-tokens-btn">Refresh</button>
+      </div>
+      <div class="scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Label / Prospect</th>
+              <th>Access Link</th>
+              <th>Status</th>
+              <th>Uses</th>
+              <th>Expires</th>
+              <th>Last Used</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tokens-body">
+            <tr><td colspan="7" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISITORS PANEL -->
+  <div id="panel-visitors" style="display:none">
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>All Demo Visitors</h2>
+          <div class="sub">Everyone who has accessed the demo platform</div>
+        </div>
+        <button class="tab-btn" id="refresh-visitors-btn">Refresh</button>
+      </div>
+      <div class="scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Institution</th>
+              <th>Role</th>
+              <th>IP / Location</th>
+              <th>Device</th>
+              <th>Date &amp; Time</th>
+            </tr>
+          </thead>
+          <tbody id="visitors-body">
+            <tr><td colspan="7" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="success-toast" id="toast"></div>
+
+<script>
+  const BASE = window.location.origin;
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function fmtDateTime(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+      + ' ' + dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function parseUA(ua) {
+    if (!ua) return 'Unknown';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/Android/.test(ua)) return 'Android';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Macintosh/.test(ua)) return 'macOS';
+    if (/Linux/.test(ua)) return 'Linux';
+    return ua.slice(0, 20);
+  }
+
+  // ── LOGOUT ────────────────────────────────────────────────────────────────
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await fetch('/admin-api/logout', { method: 'POST' });
+    window.location.href = '/admin-login.html';
+  });
+
+  // ── TABS ──────────────────────────────────────────────────────────────────
+  document.getElementById('tab-tokens-btn').addEventListener('click', () => {
+    document.getElementById('panel-tokens').style.display = 'block';
+    document.getElementById('panel-visitors').style.display = 'none';
+    document.getElementById('tab-tokens-btn').classList.add('active');
+    document.getElementById('tab-visitors-btn').classList.remove('active');
+  });
+
+  document.getElementById('tab-visitors-btn').addEventListener('click', () => {
+    document.getElementById('panel-tokens').style.display = 'none';
+    document.getElementById('panel-visitors').style.display = 'block';
+    document.getElementById('tab-tokens-btn').classList.remove('active');
+    document.getElementById('tab-visitors-btn').classList.add('active');
+    loadVisitors();
+  });
+
+  document.getElementById('refresh-tokens-btn').addEventListener('click', loadTokens);
+  document.getElementById('refresh-visitors-btn').addEventListener('click', loadVisitors);
+
+  // ── LOAD STATS ────────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const res  = await fetch('/admin-api/stats');
+      const data = await res.json();
+      document.getElementById('s-visitors').textContent = data.total_visitors || 0;
+      document.getElementById('s-tokens').textContent   = data.active_tokens || 0;
+      document.getElementById('s-scans').textContent    = data.total_scans || 0;
+    } catch (e) {}
+  }
+
+  // ── LOAD TOKENS ───────────────────────────────────────────────────────────
+  async function loadTokens() {
+    const body = document.getElementById('tokens-body');
+    try {
+      const res  = await fetch('/admin-api/tokens');
+      const data = await res.json();
+      const tokens = data.tokens || [];
+
+      if (!tokens.length) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">No tokens yet. Create one above.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = tokens.map(t => {
+        const link     = BASE + '/demo/access?token=' + t.token;
+        const isExpired = t.expires_at && new Date(t.expires_at) < new Date();
+        const statusClass = !t.is_active ? 'inactive' : isExpired ? 'expired' : 'active';
+        const statusLabel = !t.is_active ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+        const usePct = t.max_uses > 0 ? Math.min(100, (t.use_count / t.max_uses) * 100) : 0;
+        const usesText = t.max_uses > 0
+          ? t.use_count + ' / ' + t.max_uses
+          : t.use_count + ' uses';
+
+        return '<tr>'
+          + '<td>'
+          +   '<strong style="color:#fff">' + esc(t.label || t.name || 'Unnamed') + '</strong>'
+          +   (t.name ? '<div style="font-size:11px;color:#8AADCC;margin-top:2px">' + esc(t.name) + '</div>' : '')
+          +   (t.company ? '<div style="font-size:11px;color:#8AADCC">' + esc(t.company) + '</div>' : '')
+          + '</td>'
+          + '<td>'
+          +   '<div class="link-pill" title="' + esc(link) + '" onclick="copyToClipboard(\'' + esc(link) + '\')">' + esc(link) + '</div>'
+          + '</td>'
+          + '<td><span class="status-badge ' + statusClass + '">' + statusLabel + '</span></td>'
+          + '<td>'
+          +   '<div style="font-size:12px;color:#ccc">' + usesText + '</div>'
+          +   (t.max_uses > 0 ? '<div class="uses-bar"><div class="uses-fill" style="width:' + usePct + '%"></div></div>' : '')
+          + '</td>'
+          + '<td style="font-size:12px;color:#8AADCC">' + (t.expires_at ? fmtDateTime(t.expires_at) : 'Never') + '</td>'
+          + '<td style="font-size:12px;color:#8AADCC">' + (t.last_used_at ? fmtDateTime(t.last_used_at) : '—') + '</td>'
+          + '<td style="white-space:nowrap">'
+          +   '<button class="action-btn copy" style="margin-right:4px" onclick="copyToClipboard(\'' + esc(link) + '\')">Copy</button>'
+          +   (t.is_active && !isExpired
+                ? '<button class="action-btn revoke" onclick="revokeToken(' + t.id + ')">Revoke</button>'
+                : '<button class="action-btn activate" onclick="activateToken(' + t.id + ')">Activate</button>')
+          + '</td>'
+          + '</tr>';
+      }).join('');
+
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load tokens.</td></tr>';
+    }
+  }
+
+  // ── LOAD VISITORS ─────────────────────────────────────────────────────────
+  async function loadVisitors() {
+    const body = document.getElementById('visitors-body');
+    body.innerHTML = '<tr><td colspan="7" class="empty">Loading...</td></tr>';
+    try {
+      const res  = await fetch('/admin-api/visitors');
+      const data = await res.json();
+      const visitors = data.visitors || [];
+
+      // Today count
+      const today = visitors.filter(v =>
+        new Date(v.first_seen_at).toDateString() === new Date().toDateString()
+      ).length;
+      document.getElementById('s-today').textContent = today;
+
+      if (!visitors.length) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">No visitors yet.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = visitors.map(v => {
+        return '<tr>'
+          + '<td><strong style="color:#fff">' + esc(v.full_name || '—') + '</strong></td>'
+          + '<td style="font-size:12px">' + esc(v.email || '—') + '</td>'
+          + '<td>' + esc(v.company || '—') + '</td>'
+          + '<td style="font-size:12px;color:#8AADCC">' + esc(v.role || '—') + '</td>'
+          + '<td><span style="font-family:monospace;font-size:11px;color:#8AADCC">' + esc(String(v.ip_address || '—')) + '</span></td>'
+          + '<td style="font-size:12px;color:#8AADCC">' + esc(parseUA(v.user_agent)) + '</td>'
+          + '<td style="font-size:12px;color:#8AADCC;white-space:nowrap">' + fmtDateTime(v.first_seen_at) + '</td>'
+          + '</tr>';
+      }).join('');
+
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load visitors.</td></tr>';
+    }
+  }
+
+  // ── CREATE TOKEN ──────────────────────────────────────────────────────────
+  document.getElementById('create-btn').addEventListener('click', async () => {
+    const btn     = document.getElementById('create-btn');
+    const errEl   = document.getElementById('create-err');
+    const label   = document.getElementById('f-label').value.trim();
+    const name    = document.getElementById('f-name').value.trim();
+    const email   = document.getElementById('f-email').value.trim();
+    const company = document.getElementById('f-company').value.trim();
+    const role    = document.getElementById('f-role').value.trim();
+    const expires = document.getElementById('f-expires').value;
+    const maxuses = document.getElementById('f-maxuses').value;
+    const notes   = document.getElementById('f-notes').value.trim();
+
+    errEl.classList.remove('show');
+
+    if (!label && !name) {
+      errEl.textContent = 'Please enter at least a label or prospect name.';
+      errEl.classList.add('show');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Generating...';
+
+    try {
+      const res  = await fetch('/admin-api/tokens', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ label, name, email, company, role, expires_days: expires, max_uses: maxuses, notes })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed.');
+
+      const link = BASE + '/demo/access?token=' + data.token.token;
+      document.getElementById('generated-link').textContent = link;
+      document.getElementById('generated-wrap').style.display = 'block';
+
+      // Clear form
+      ['f-label','f-name','f-email','f-company','f-role','f-notes'].forEach(id => {
+        document.getElementById(id).value = '';
+      });
+
+      loadTokens();
+      loadStats();
+      toast('Token created successfully.');
+
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate Token & Link';
+    }
+  });
+
+  document.getElementById('copy-link-btn').addEventListener('click', () => {
+    const link = document.getElementById('generated-link').textContent;
+    copyToClipboard(link);
+  });
+
+  // ── TOKEN ACTIONS ─────────────────────────────────────────────────────────
+  async function revokeToken(id) {
+    if (!confirm('Revoke this token? The prospect will no longer be able to access the demo with this link.')) return;
+    await fetch('/admin-api/tokens/' + id + '/revoke', { method: 'PATCH' });
+    loadTokens();
+    loadStats();
+    toast('Token revoked.');
+  }
+
+  async function activateToken(id) {
+    await fetch('/admin-api/tokens/' + id + '/activate', { method: 'PATCH' });
+    loadTokens();
+    loadStats();
+    toast('Token activated.');
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard.')).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('Copied.');
+    });
+  }
+
+  // ── INIT ──────────────────────────────────────────────────────────────────
+  loadStats();
+  loadTokens();
+</script>
+</body>
+</html>

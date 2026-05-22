@@ -1,29 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <a href="/help.html" style="font-size:13px;color:#1a3a5c;text-decoration:none">Help / How to Test</a>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>DocVerify - Dashboard</title>
+  <title>UniVerify - Dashboard</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh;padding:32px 16px}
+    .topbar{max-width:900px;margin:0 auto 16px;display:flex;justify-content:space-between;align-items:center}
+    .topbar a{font-size:13px;color:#1a3a5c;text-decoration:none}
+    .topbar a:hover{text-decoration:underline}
+    .topbar-right{display:flex;align-items:center;gap:16px}
+    .logout-btn{font-size:12px;color:#888;background:none;border:1px solid #ddd;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:inherit}
+    .logout-btn:hover{border-color:#1a3a5c;color:#1a3a5c}
     h1{font-size:24px;color:#1a3a5c;text-align:center;margin-bottom:4px}
     .sub{text-align:center;color:#888;font-size:14px;margin-bottom:28px}
-    .stats{display:flex;gap:12px;max-width:900px;margin:0 auto 24px;justify-content:center}
+    .stats{display:flex;gap:12px;max-width:900px;margin:0 auto 24px;justify-content:center;flex-wrap:wrap}
     .stat{background:#fff;border-radius:12px;padding:14px 24px;text-align:center;min-width:120px;box-shadow:0 2px 8px rgba(0,0,0,0.05)}
     .stat .num{font-size:28px;font-weight:700;color:#1a3a5c}
     .stat .lbl{font-size:11px;color:#aaa;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto 24px}
     @media(max-width:640px){.grid{grid-template-columns:1fr}}
     .card{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07)}
-    .card-full{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07);max-width:900px;margin:0 auto}
-    .card h2,.card-full h2{font-size:15px;color:#1a3a5c;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+    .card-full{background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 16px rgba(0,0,0,0.07);max-width:900px;margin:0 auto 24px}
+    .card h2,.card-full h2{font-size:15px;color:#1a3a5c;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
     label{display:block;font-size:12px;color:#888;margin-bottom:4px;margin-top:14px}
     label:first-of-type{margin-top:0}
-    input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s}
+    input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none;transition:border 0.2s;font-family:inherit}
     input:focus{border-color:#1a3a5c}
-    .btn{width:100%;padding:12px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:18px;transition:background 0.2s}
+    .btn{width:100%;padding:12px;background:#1a3a5c;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:18px;transition:background 0.2s;font-family:inherit}
     .btn:hover{background:#15304d}
     .btn:disabled{background:#aaa;cursor:not-allowed}
     .result{margin-top:20px;display:none}
@@ -56,21 +61,35 @@
     .ua{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;font-size:11px}
     .ip{font-family:monospace;font-size:12px;color:#555}
     .muted{font-size:11px;color:#aaa;margin-top:2px}
-    .refresh-btn{font-size:12px;color:#1a3a5c;background:none;border:none;cursor:pointer;font-weight:500}
+    .refresh-btn{font-size:12px;color:#1a3a5c;background:none;border:none;cursor:pointer;font-weight:500;font-family:inherit}
     .refresh-btn:hover{text-decoration:underline}
+    .tab-switch{display:flex;gap:8px;margin-bottom:0}
+    .tab-switch button{font-size:12px;padding:6px 14px;border-radius:20px;border:1.5px solid #ddd;background:#fff;color:#888;cursor:pointer;font-family:inherit;font-weight:500;transition:all 0.2s}
+    .tab-switch button.active{background:#1a3a5c;color:#fff;border-color:#1a3a5c}
     .empty{text-align:center;padding:32px;color:#aaa;font-size:14px}
     .scroll-wrap{overflow-x:auto}
+    .visitor-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;vertical-align:middle;margin-left:6px}
+    .visitor-badge.new{background:#e1f5ee;color:#0f6e56}
   </style>
 </head>
 <body>
 
-<h1>DocVerify</h1>
+<div class="topbar">
+  <a href="/help.html">Help / How to Test</a>
+  <div class="topbar-right">
+    <span id="demo-greeting" style="font-size:13px;color:#888"></span>
+    <button class="logout-btn" id="logout-btn">Log out</button>
+  </div>
+</div>
+
+<h1>UniVerify</h1>
 <p class="sub">Generate authenticated QR codes &middot; Verify documents &middot; Audit log</p>
 
 <div class="stats">
   <div class="stat"><div class="num" id="stat-total">-</div><div class="lbl">Total scans</div></div>
   <div class="stat"><div class="num" id="stat-today">-</div><div class="lbl">Today</div></div>
   <div class="stat"><div class="num" id="stat-docs">-</div><div class="lbl">Documents</div></div>
+  <div class="stat"><div class="num" id="stat-visitors">-</div><div class="lbl">Demo visitors</div></div>
 </div>
 
 <div class="grid">
@@ -100,13 +119,10 @@
 
   <div class="card">
     <h2>Verify a document</h2>
-  
     <div class="tabs" style="display:flex;gap:0;border-bottom:1px solid #eee;margin-bottom:16px">
       <div class="vtab active" data-vtab="by-id" style="padding:8px 16px;font-size:13px;font-weight:500;color:#1a3a5c;border-bottom:2px solid #1a3a5c;cursor:pointer;margin-bottom:-1px">By Document ID</div>
       <div class="vtab" data-vtab="by-search" style="padding:8px 16px;font-size:13px;font-weight:500;color:#888;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px">Search by Name / Matric</div>
     </div>
-  
-    <!-- Tab: By Document ID -->
     <div id="vtab-by-id" class="vtab-content">
       <label>Document ID</label>
       <input type="text" id="v-docid" placeholder="DOC-20260430-XXXXXXXX" style="font-family:monospace"/>
@@ -114,8 +130,6 @@
       <p class="err" id="v-error"></p>
       <div class="result" id="v-result"></div>
     </div>
-  
-    <!-- Tab: Search by Name / Matric -->
     <div id="vtab-by-search" class="vtab-content" style="display:none">
       <label>Graduate name or matric number</label>
       <input type="text" id="s-query" placeholder="e.g. Amina Ibrahim or CS/2020/001"/>
@@ -126,317 +140,423 @@
       <div id="s-results" style="margin-top:16px"></div>
     </div>
   </div>
+</div>
 
+<!-- VERIFICATION LOG + VISITORS TABS -->
 <div class="card-full">
-  <h2>Verification log <button class="refresh-btn" id="refresh-btn">Refresh</button></h2>
-  <div class="scroll-wrap">
-    <table class="log-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Document</th>
-          <th>Result</th>
-          <th>IP address</th>
-          <th>Location</th>
-          <th>Device</th>
-          <th>Date &amp; Time</th>
-        </tr>
-      </thead>
-      <tbody id="log-body">
-        <tr><td colspan="7" class="empty">Loading...</td></tr>
-      </tbody>
-    </table>
+  <h2>
+    <div class="tab-switch">
+      <button class="active" id="tab-logs-btn">Verification Log</button>
+      <button id="tab-visitors-btn">Demo Visitors <span class="visitor-badge new" id="visitor-count" style="display:none"></span></button>
+    </div>
+    <button class="refresh-btn" id="refresh-btn">Refresh</button>
+  </h2>
+
+  <!-- Verification log panel -->
+  <div id="panel-logs">
+    <div class="scroll-wrap">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Document</th>
+            <th>Result</th>
+            <th>IP address</th>
+            <th>Location</th>
+            <th>Device</th>
+            <th>Date &amp; Time</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+          <tr><td colspan="7" class="empty">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Visitors panel -->
+  <div id="panel-visitors" style="display:none">
+    <div class="scroll-wrap">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Institution</th>
+            <th>Role</th>
+            <th>IP Address</th>
+            <th>Device</th>
+            <th>Date &amp; Time</th>
+          </tr>
+        </thead>
+        <tbody id="visitors-body">
+          <tr><td colspan="7" class="empty">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
 <script>
-  // Verify tab switching
-document.querySelectorAll('.vtab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.vtab').forEach(t => {
-      t.style.color = '#888';
-      t.style.borderBottomColor = 'transparent';
-    });
-    document.querySelectorAll('.vtab-content').forEach(c => c.style.display = 'none');
-    tab.style.color = '#1a3a5c';
-    tab.style.borderBottomColor = '#1a3a5c';
-    document.getElementById(`vtab-${tab.dataset.vtab}`).style.display = 'block';
+  const BASE = window.location.origin;
+  const locCache = {};
+
+  // ── DEMO STATUS ────────────────────────────────────────────────────────────
+  fetch('/demo/status').then(r => r.json()).then(d => {
+    if (d.name && d.name !== 'Guest') {
+      document.getElementById('demo-greeting').textContent = 'Welcome, ' + d.name;
+    }
+  }).catch(() => {});
+
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await fetch('/demo/logout', { method: 'POST' });
+    window.location.href = '/demo-login.html';
   });
-});
 
-// Search by name/matric
-document.getElementById('s-btn').addEventListener('click', async () => {
-  const q           = document.getElementById('s-query').value.trim();
-  const institution = document.getElementById('s-institution').value.trim();
-  const errEl       = document.getElementById('s-error');
-  const results     = document.getElementById('s-results');
-  const btn         = document.getElementById('s-btn');
-  errEl.classList.remove('show');
-  results.innerHTML = '';
+  // ── TAB SWITCHING (log vs visitors) ───────────────────────────────────────
+  document.getElementById('tab-logs-btn').addEventListener('click', () => {
+    document.getElementById('panel-logs').style.display = 'block';
+    document.getElementById('panel-visitors').style.display = 'none';
+    document.getElementById('tab-logs-btn').classList.add('active');
+    document.getElementById('tab-visitors-btn').classList.remove('active');
+  });
 
-  if (!q || q.length < 3) {
-    errEl.textContent = 'Please enter at least 3 characters.';
-    errEl.classList.add('show');
-    return;
+  document.getElementById('tab-visitors-btn').addEventListener('click', () => {
+    document.getElementById('panel-logs').style.display = 'none';
+    document.getElementById('panel-visitors').style.display = 'block';
+    document.getElementById('tab-logs-btn').classList.remove('active');
+    document.getElementById('tab-visitors-btn').classList.add('active');
+    loadVisitors();
+  });
+
+  document.getElementById('refresh-btn').addEventListener('click', () => {
+    const logsVisible = document.getElementById('panel-logs').style.display !== 'none';
+    if (logsVisible) loadLogs();
+    else loadVisitors();
+  });
+
+  // ── VERIFY TAB SWITCHING ──────────────────────────────────────────────────
+  document.querySelectorAll('.vtab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.vtab').forEach(t => {
+        t.style.color = '#888';
+        t.style.borderBottomColor = 'transparent';
+      });
+      document.querySelectorAll('.vtab-content').forEach(c => c.style.display = 'none');
+      tab.style.color = '#1a3a5c';
+      tab.style.borderBottomColor = '#1a3a5c';
+      document.getElementById('vtab-' + tab.dataset.vtab).style.display = 'block';
+    });
+  });
+
+  // ── HELPERS ───────────────────────────────────────────────────────────────
+  async function getLocation(ip) {
+    if (!ip || ip === '127.0.0.1' || ip.startsWith('::') || ip === 'N/A') return 'Local';
+    if (locCache[ip]) return locCache[ip];
+    try {
+      const r = await fetch('https://ip-api.com/json/' + ip + '?fields=city,country,status');
+      const d = await r.json();
+      const loc = d.status === 'success'
+        ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
+        : 'Unknown';
+      locCache[ip] = loc;
+      return loc;
+    } catch { return 'Unknown'; }
   }
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Searching...';
+  function parseUA(ua) {
+    if (!ua) return 'Unknown';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/Android/.test(ua)) return 'Android';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Macintosh/.test(ua)) return 'macOS';
+    if (/Linux/.test(ua)) return 'Linux';
+    return ua.slice(0, 25);
+  }
 
-  try {
-    const url = `${BASE}/verify/api/search?q=${encodeURIComponent(q)}${institution ? '&institution=' + encodeURIComponent(institution) : ''}`;
-    const res  = await fetch(url);
-    const data = await res.json();
+  function fmtDate(d) {
+    if (!d) return 'N/A';
+    return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  }
 
-    if (!res.ok) throw new Error(data.error || 'Search failed.');
+  function fmtDateTime(d) {
+    if (!d) return 'N/A';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+      + '<br><span style="color:#aaa;font-size:11px">'
+      + dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+      + '</span>';
+  }
 
-    if (!data.results.length) {
-      results.innerHTML = '<p style="font-size:13px;color:#888;text-align:center;padding:16px">No records found. Check the name or matric number and try again.</p>';
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── LOAD VERIFICATION LOGS ────────────────────────────────────────────────
+  async function loadLogs() {
+    const body = document.getElementById('log-body');
+    try {
+      const [logsRes, docsRes] = await Promise.all([
+        fetch(BASE + '/verify/api/logs'),
+        fetch(BASE + '/api/documents?limit=1')
+      ]);
+      const logsData = await logsRes.json();
+      const docsData = await docsRes.json();
+      const logs  = logsData.logs || [];
+      const total = logsData.total || 0;
+      const today = logs.filter(l =>
+        new Date(l.verified_at).toDateString() === new Date().toDateString()
+      ).length;
+
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-today').textContent = today;
+      document.getElementById('stat-docs').textContent = docsData.pagination?.total ?? '-';
+
+      if (!logs.length) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">No verifications yet.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = logs.map((l, i) => {
+        const bc = l.result === 'found' ? 'verified' : l.result === 'revoked' ? 'revoked' : 'not_found';
+        const bl = l.result === 'found' ? 'Verified' : l.result === 'revoked' ? 'Revoked' : 'Not found';
+        const docInfo = l.title
+          ? '<strong>' + esc(l.title) + '</strong><div class="muted">' + esc(l.doc_id) + '</div><div class="muted">' + esc(l.issued_to || '') + '</div>'
+          : '<span class="ip">' + esc(l.doc_id) + '</span>';
+        return '<tr>'
+          + '<td style="color:#aaa;font-size:12px">' + (total - i) + '</td>'
+          + '<td>' + docInfo + '</td>'
+          + '<td><span class="badge ' + bc + '">' + bl + '</span></td>'
+          + '<td><span class="ip">' + esc(l.ip_address || 'N/A') + '</span></td>'
+          + '<td class="muted" id="loc-' + l.id + '">...</td>'
+          + '<td><div class="ua" title="' + esc(l.user_agent) + '">' + esc(parseUA(l.user_agent)) + '</div></td>'
+          + '<td style="font-size:12px;white-space:nowrap">' + fmtDateTime(l.verified_at) + '</td>'
+          + '</tr>';
+      }).join('');
+
+      logs.forEach(async l => {
+        const loc = await getLocation(l.ip_address);
+        const el  = document.getElementById('loc-' + l.id);
+        if (el) el.textContent = loc;
+      });
+
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load logs.</td></tr>';
+    }
+  }
+
+  // ── LOAD DEMO VISITORS ────────────────────────────────────────────────────
+  async function loadVisitors() {
+    const body = document.getElementById('visitors-body');
+    body.innerHTML = '<tr><td colspan="7" class="empty">Loading...</td></tr>';
+    try {
+      const res  = await fetch('/demo/visitors');
+      const data = await res.json();
+      const visitors = data.visitors || [];
+
+      // Update stat
+      document.getElementById('stat-visitors').textContent = visitors.length;
+      const badge = document.getElementById('visitor-count');
+      if (visitors.length > 0) {
+        badge.textContent = visitors.length;
+        badge.style.display = 'inline-block';
+      }
+
+      if (!visitors.length) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">No demo visitors yet.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = visitors.map(v => {
+        const device = parseUA(v.user_agent);
+        return '<tr>'
+          + '<td><strong style="color:#1a3a5c">' + esc(v.full_name || '—') + '</strong></td>'
+          + '<td style="font-size:12px">' + esc(v.email || '—') + '</td>'
+          + '<td>' + esc(v.company || '—') + '</td>'
+          + '<td style="font-size:12px;color:#888">' + esc(v.role || '—') + '</td>'
+          + '<td><span class="ip">' + esc(String(v.ip_address || '—')) + '</span></td>'
+          + '<td><div class="ua">' + esc(device) + '</div></td>'
+          + '<td style="font-size:12px;white-space:nowrap">' + fmtDateTime(v.first_seen_at) + '</td>'
+          + '</tr>';
+      }).join('');
+
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load visitors.</td></tr>';
+    }
+  }
+
+  // ── GENERATE DOC ──────────────────────────────────────────────────────────
+  async function generateDoc() {
+    const title    = document.getElementById('g-title').value.trim();
+    const issuedTo = document.getElementById('g-issuedTo').value.trim();
+    const issuedBy = document.getElementById('g-issuedBy').value.trim();
+    const docType  = document.getElementById('g-docType').value.trim();
+    const expiry   = document.getElementById('g-expiry').value;
+    const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
+    const errEl    = document.getElementById('g-error');
+    const btn      = document.getElementById('g-btn');
+    errEl.classList.remove('show');
+
+    if (!title || !issuedTo || !issuedBy) {
+      errEl.textContent = 'Title, Issued To, and Issued By are required.';
+      errEl.classList.add('show');
       return;
     }
 
-    results.innerHTML = data.results.map(doc => {
-      const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
-      const statusColor = doc.status === 'active' && !isExpired ? '#0f6e56' : '#A32D2D';
-      const statusLabel = doc.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
-      return `<div style="border:1px solid #eee;border-radius:10px;padding:14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-          <strong style="font-size:14px;color:#111">${esc(doc.title)}</strong>
-          <span style="font-size:11px;font-weight:600;color:${statusColor};background:${doc.status === 'active' && !isExpired ? '#e1f5ee' : '#fcebeb'};padding:3px 8px;border-radius:12px">${statusLabel}</span>
-        </div>
-        <div style="font-size:12px;color:#888;margin-bottom:4px">Issued to: <strong style="color:#333">${esc(doc.issued_to)}</strong></div>
-        <div style="font-size:12px;color:#888;margin-bottom:4px">Issued by: ${esc(doc.issued_by)}</div>
-        <div style="font-size:11px;font-family:monospace;color:#555;margin-bottom:10px">${esc(doc.doc_id)}</div>
-        <a href="${BASE}/verify?doc=${encodeURIComponent(doc.doc_id)}" target="_blank"
-           style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px;display:inline-block">
-          View verify page
-        </a>
-      </div>`;
-    }).join('');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Generating...';
 
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Search records';
+    try {
+      const res  = await fetch(BASE + '/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed.');
+
+      const doc = data.document;
+      document.getElementById('g-qr').src = data.qr.dataUrl;
+      document.getElementById('g-docid').textContent = doc.doc_id;
+      document.getElementById('g-fields').innerHTML =
+        '<div class="field-row"><span>Issued To</span><span>' + esc(doc.issued_to) + '</span></div>'
+        + '<div class="field-row"><span>Issued By</span><span>' + esc(doc.issued_by) + '</span></div>'
+        + '<div class="field-row"><span>Type</span><span>' + esc(doc.doc_type || 'N/A') + '</span></div>'
+        + '<div class="field-row"><span>Issue Date</span><span>' + fmtDate(doc.issue_date) + '</span></div>'
+        + (doc.expiry_date ? '<div class="field-row"><span>Valid Until</span><span>' + fmtDate(doc.expiry_date) + '</span></div>' : '');
+      document.getElementById('g-links').innerHTML =
+        '<a href="' + BASE + '/api/documents/' + doc.doc_id + '/pdf" target="_blank" class="primary">Download PDF</a>'
+        + '<a href="' + BASE + '/api/documents/' + doc.doc_id + '/qr" target="_blank">Download QR</a>'
+        + '<a href="' + data.qr.url + '" target="_blank">Verify page</a>';
+      document.getElementById('g-result').classList.add('show');
+      setTimeout(loadLogs, 800);
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate QR code';
+    }
   }
-});
 
-document.getElementById('s-query').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('s-btn').click();
-});
-const BASE = window.location.origin;
-const locCache = {};
+  // ── VERIFY DOC ────────────────────────────────────────────────────────────
+  async function verifyDoc() {
+    const docId  = document.getElementById('v-docid').value.trim();
+    const errEl  = document.getElementById('v-error');
+    const result = document.getElementById('v-result');
+    const btn    = document.getElementById('v-btn');
+    errEl.classList.remove('show');
+    result.classList.remove('show');
 
-async function getLocation(ip) {
-  if (!ip || ip === '127.0.0.1' || ip.startsWith('::') || ip === 'N/A') return 'Local';
-  if (locCache[ip]) return locCache[ip];
-  try {
-    const r = await fetch(`https://ip-api.com/json/${ip}?fields=city,country,status`);
-    const d = await r.json();
-    const loc = d.status === 'success'
-      ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
-      : 'Unknown';
-    locCache[ip] = loc;
-    return loc;
-  } catch { return 'Unknown'; }
-}
-
-function parseUA(ua) {
-  if (!ua) return 'Unknown';
-  if (/iPhone/.test(ua)) return 'iPhone';
-  if (/iPad/.test(ua)) return 'iPad';
-  if (/Android/.test(ua)) return 'Android';
-  if (/Windows/.test(ua)) return 'Windows';
-  if (/Macintosh/.test(ua)) return 'macOS';
-  if (/Linux/.test(ua)) return 'Linux';
-  return ua.slice(0, 25);
-}
-
-function fmtDate(d) {
-  if (!d) return 'N/A';
-  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
-}
-
-function fmtDateTime(d) {
-  if (!d) return 'N/A';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
-    + '<br><span style="color:#aaa;font-size:11px">'
-    + dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
-    + '</span>';
-}
-
-function esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-async function loadLogs() {
-  const body = document.getElementById('log-body');
-  try {
-    const [logsRes, docsRes] = await Promise.all([
-      fetch(`${BASE}/verify/api/logs`),
-      fetch(`${BASE}/api/documents?limit=1`)
-    ]);
-    const logsData = await logsRes.json();
-    const docsData = await docsRes.json();
-    const logs  = logsData.logs || [];
-    const total = logsData.total || 0;
-    const today = logs.filter(l =>
-      new Date(l.verified_at).toDateString() === new Date().toDateString()
-    ).length;
-
-    document.getElementById('stat-total').textContent = total;
-    document.getElementById('stat-today').textContent = today;
-    document.getElementById('stat-docs').textContent = docsData.pagination?.total ?? '-';
-
-    if (!logs.length) {
-      body.innerHTML = '<tr><td colspan="7" class="empty">No verifications yet.</td></tr>';
+    if (!docId) {
+      errEl.textContent = 'Please enter a document ID.';
+      errEl.classList.add('show');
       return;
     }
 
-    body.innerHTML = logs.map((l, i) => {
-      const bc = l.result === 'found' ? 'verified' : l.result === 'revoked' ? 'revoked' : 'not_found';
-      const bl = l.result === 'found' ? 'Verified' : l.result === 'revoked' ? 'Revoked' : 'Not found';
-      const docInfo = l.title
-        ? `<strong>${esc(l.title)}</strong><div class="muted">${esc(l.doc_id)}</div><div class="muted">${esc(l.issued_to || '')}</div>`
-        : `<span class="ip">${esc(l.doc_id)}</span>`;
-      return `<tr>
-        <td style="color:#aaa;font-size:12px">${total - i}</td>
-        <td>${docInfo}</td>
-        <td><span class="badge ${bc}">${bl}</span></td>
-        <td><span class="ip">${esc(l.ip_address || 'N/A')}</span></td>
-        <td class="muted" id="loc-${l.id}">...</td>
-        <td><div class="ua" title="${esc(l.user_agent)}">${esc(parseUA(l.user_agent))}</div></td>
-        <td style="font-size:12px;white-space:nowrap">${fmtDateTime(l.verified_at)}</td>
-      </tr>`;
-    }).join('');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Verifying...';
 
-    logs.forEach(async l => {
-      const loc = await getLocation(l.ip_address);
-      const el  = document.getElementById(`loc-${l.id}`);
-      if (el) el.textContent = loc;
-    });
-
-  } catch (e) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load logs.</td></tr>';
-  }
-}
-
-async function generateDoc() {
-  const title    = document.getElementById('g-title').value.trim();
-  const issuedTo = document.getElementById('g-issuedTo').value.trim();
-  const issuedBy = document.getElementById('g-issuedBy').value.trim();
-  const docType  = document.getElementById('g-docType').value.trim();
-  const expiry   = document.getElementById('g-expiry').value;
-  const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
-  const errEl    = document.getElementById('g-error');
-  const btn      = document.getElementById('g-btn');
-  errEl.classList.remove('show');
-
-  if (!title || !issuedTo || !issuedBy) {
-    errEl.textContent = 'Title, Issued To, and Issued By are required.';
-    errEl.classList.add('show');
-    return;
-  }
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Generating...';
-
-  try {
-    const res  = await fetch(`${BASE}/api/documents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed.');
-
-    const doc = data.document;
-    document.getElementById('g-qr').src = data.qr.dataUrl;
-    document.getElementById('g-docid').textContent = doc.doc_id;
-    document.getElementById('g-fields').innerHTML = `
-      <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
-      <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
-      <div class="field-row"><span>Type</span><span>${esc(doc.doc_type || 'N/A')}</span></div>
-      <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
-      ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
-    `;
-    document.getElementById('g-links').innerHTML = `
-      <a href="${BASE}/api/documents/${doc.doc_id}/pdf" target="_blank" class="primary">Download PDF</a>
-      <a href="${BASE}/api/documents/${doc.doc_id}/qr" target="_blank">Download QR</a>
-      <a href="${data.qr.url}" target="_blank">Verify page</a>
-    `;
-    document.getElementById('g-result').classList.add('show');
-    setTimeout(loadLogs, 800);
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Generate QR code';
-  }
-}
-
-async function verifyDoc() {
-  const docId = document.getElementById('v-docid').value.trim();
-  const errEl = document.getElementById('v-error');
-  const result = document.getElementById('v-result');
-  const btn   = document.getElementById('v-btn');
-  errEl.classList.remove('show');
-  result.classList.remove('show');
-
-  if (!docId) {
-    errEl.textContent = 'Please enter a document ID.';
-    errEl.classList.add('show');
-    return;
-  }
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Verifying...';
-
-  try {
-    const res  = await fetch(`${BASE}/verify/api/${encodeURIComponent(docId)}`);
-    const data = await res.json();
-    const doc  = data.document;
-    let bc = 'verified', bl = '&#10003; Verified Authentic';
-    if (!data.valid) {
-      bc = data.status === 'revoked' ? 'revoked' : 'error';
-      bl = data.status === 'revoked' ? '&#10007; Revoked' : '&#33; Not Found';
+    try {
+      const res  = await fetch(BASE + '/verify/api/' + encodeURIComponent(docId));
+      const data = await res.json();
+      const doc  = data.document;
+      let bc = 'verified', bl = '&#10003; Verified Authentic';
+      if (!data.valid) {
+        bc = data.status === 'revoked' ? 'revoked' : 'error';
+        bl = data.status === 'revoked' ? '&#10007; Revoked' : '&#33; Not Found';
+      }
+      result.innerHTML = '<div class="badge ' + bc + '" style="margin-bottom:14px">' + bl + '</div>'
+        + (doc ? '<div class="doc-id">' + esc(doc.doc_id) + '</div>'
+          + '<div class="field-row"><span>Title</span><span>' + esc(doc.title) + '</span></div>'
+          + '<div class="field-row"><span>Issued To</span><span>' + esc(doc.issued_to) + '</span></div>'
+          + '<div class="field-row"><span>Issued By</span><span>' + esc(doc.issued_by) + '</span></div>'
+          + '<div class="field-row"><span>Issue Date</span><span>' + fmtDate(doc.issue_date) + '</span></div>'
+          + (doc.expiry_date ? '<div class="field-row"><span>Valid Until</span><span>' + fmtDate(doc.expiry_date) + '</span></div>' : '')
+          + '<div class="field-row"><span>Status</span><span>' + esc(doc.status) + '</span></div>'
+          : '<p style="font-size:13px;color:#888;margin-top:8px">No document found for that ID.</p>');
+      result.classList.add('show');
+      setTimeout(loadLogs, 800);
+    } catch (e) {
+      errEl.textContent = 'Verification failed. Please try again.';
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Verify document';
     }
-    result.innerHTML = `
-      <div class="badge ${bc}" style="margin-bottom:14px">${bl}</div>
-      ${doc ? `
-        <div class="doc-id">${esc(doc.doc_id)}</div>
-        <div class="field-row"><span>Title</span><span>${esc(doc.title)}</span></div>
-        <div class="field-row"><span>Issued To</span><span>${esc(doc.issued_to)}</span></div>
-        <div class="field-row"><span>Issued By</span><span>${esc(doc.issued_by)}</span></div>
-        <div class="field-row"><span>Issue Date</span><span>${fmtDate(doc.issue_date)}</span></div>
-        ${doc.expiry_date ? `<div class="field-row"><span>Valid Until</span><span>${fmtDate(doc.expiry_date)}</span></div>` : ''}
-        <div class="field-row"><span>Status</span><span>${esc(doc.status)}</span></div>
-      ` : '<p style="font-size:13px;color:#888;margin-top:8px">No document found for that ID.</p>'}
-    `;
-    result.classList.add('show');
-    setTimeout(loadLogs, 800);
-  } catch (e) {
-    errEl.textContent = 'Verification failed. Please try again.';
-    errEl.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Verify document';
   }
-}
 
-document.getElementById('g-btn').addEventListener('click', generateDoc);
-document.getElementById('v-btn').addEventListener('click', verifyDoc);
-document.getElementById('refresh-btn').addEventListener('click', loadLogs);
-document.getElementById('v-docid').addEventListener('keydown', e => {
-  if (e.key === 'Enter') verifyDoc();
-});
+  // ── SEARCH ────────────────────────────────────────────────────────────────
+  document.getElementById('s-btn').addEventListener('click', async () => {
+    const q           = document.getElementById('s-query').value.trim();
+    const institution = document.getElementById('s-institution').value.trim();
+    const errEl       = document.getElementById('s-error');
+    const results     = document.getElementById('s-results');
+    const btn         = document.getElementById('s-btn');
+    errEl.classList.remove('show');
+    results.innerHTML = '';
 
-loadLogs();
-setInterval(loadLogs, 30000);
+    if (!q || q.length < 3) {
+      errEl.textContent = 'Please enter at least 3 characters.';
+      errEl.classList.add('show');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Searching...';
+
+    try {
+      const url = BASE + '/verify/api/search?q=' + encodeURIComponent(q) + (institution ? '&institution=' + encodeURIComponent(institution) : '');
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Search failed.');
+
+      if (!data.results.length) {
+        results.innerHTML = '<p style="font-size:13px;color:#888;text-align:center;padding:16px">No records found.</p>';
+        return;
+      }
+
+      results.innerHTML = data.results.map(doc => {
+        const isExpired   = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+        const statusColor = doc.status === 'active' && !isExpired ? '#0f6e56' : '#A32D2D';
+        const statusLabel = doc.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+        return '<div style="border:1px solid #eee;border-radius:10px;padding:14px;margin-bottom:10px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+          + '<strong style="font-size:14px;color:#111">' + esc(doc.title) + '</strong>'
+          + '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:' + (doc.status === 'active' && !isExpired ? '#e1f5ee' : '#fcebeb') + ';padding:3px 8px;border-radius:12px">' + statusLabel + '</span>'
+          + '</div>'
+          + '<div style="font-size:12px;color:#888;margin-bottom:4px">Issued to: <strong style="color:#333">' + esc(doc.issued_to) + '</strong></div>'
+          + '<div style="font-size:12px;color:#888;margin-bottom:4px">Issued by: ' + esc(doc.issued_by) + '</div>'
+          + '<div style="font-size:11px;font-family:monospace;color:#555;margin-bottom:10px">' + esc(doc.doc_id) + '</div>'
+          + '<a href="' + BASE + '/verify?doc=' + encodeURIComponent(doc.doc_id) + '" target="_blank" style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px;display:inline-block">View verify page</a>'
+          + '</div>';
+      }).join('');
+
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.classList.add('show');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search records';
+    }
+  });
+
+  document.getElementById('s-query').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('s-btn').click();
+  });
+
+  // ── EVENT LISTENERS ───────────────────────────────────────────────────────
+  document.getElementById('g-btn').addEventListener('click', generateDoc);
+  document.getElementById('v-btn').addEventListener('click', verifyDoc);
+  document.getElementById('v-docid').addEventListener('keydown', e => {
+    if (e.key === 'Enter') verifyDoc();
+  });
+
+  // ── INIT ──────────────────────────────────────────────────────────────────
+  loadLogs();
+  loadVisitors();
+  setInterval(loadLogs, 30000);
 </script>
 </body>
 </html>

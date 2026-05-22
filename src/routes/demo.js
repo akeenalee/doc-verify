@@ -82,7 +82,70 @@ async function sendVisitorNotification(visitor) {
     console.error('Email notification failed:', e.message);
   }
 }
+// GET /demo/access?token=xxx - token-based access (no login form)
+router.get('/access', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect('/demo-login.html');
 
+  try {
+    const result = await pool.query(
+      `SELECT * FROM demo_tokens WHERE token = $1 AND is_active = TRUE`,
+      [token]
+    );
+
+    if (!result.rows.length) {
+      return res.redirect('/demo-login.html?error=invalid_token');
+    }
+
+    const t = result.rows[0];
+
+    // Check expiry
+    if (t.expires_at && new Date(t.expires_at) < new Date()) {
+      return res.redirect('/demo-login.html?error=expired_token');
+    }
+
+    // Check max uses
+    if (t.max_uses > 0 && t.use_count >= t.max_uses) {
+      return res.redirect('/demo-login.html?error=token_exhausted');
+    }
+
+    // Update use count and last used
+    await pool.query(
+      `UPDATE demo_tokens
+       SET use_count = use_count + 1, last_used_at = NOW()
+       WHERE id = $1`,
+      [t.id]
+    );
+
+    // Log the visitor
+    const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || '';
+
+    await pool.query(
+      `INSERT INTO demo_visitors (full_name, email, company, role, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [t.name || t.label || null, t.email || null, t.company || null, t.role || null, ip, userAgent]
+    );
+
+    // Send notification
+    sendVisitorNotification({
+      full_name:  t.name || t.label || 'Token User',
+      email:      t.email,
+      company:    t.company,
+      role:       t.role,
+      ip_address: ip,
+      user_agent: userAgent,
+    });
+
+    req.session.demoAuth = true;
+    req.session.demoName = t.name || t.label || 'Guest';
+    res.redirect('/');
+
+  } catch (e) {
+    console.error('Token access error:', e.message);
+    res.redirect('/demo-login.html?error=server_error');
+  }
+});
 // POST /demo/login
 router.post('/login', async (req, res) => {
   const { username, password, full_name, email, company, role } = req.body;
