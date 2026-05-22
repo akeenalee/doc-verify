@@ -13,6 +13,26 @@ const demoRouter      = require('./routes/demo');
 const { verifyLimiter, createLimiter } = require('./middleware/rateLimiter');
 const { requireDemoAuth } = require('./middleware/demoAuth');
 
+const adminRouter = require('./routes/admin');
+const { requireAdminAuth } = require('./middleware/adminAuth');
+
+// Admin routes
+app.use('/admin-api', adminRouter);
+
+// Admin pages - protected by admin auth (separate from demo auth)
+app.use((req, res, next) => {
+  const adminBlocked = ['/admin', '/admin.html', '/admin-login.html'];
+  // admin-login.html serves freely, /admin requires auth
+  if (req.path === '/admin' || req.path === '/admin/') {
+    return requireAdminAuth(req, res, next);
+  }
+  next();
+});
+
+app.get('/admin', requireAdminAuth, (req, res) =>
+  res.sendFile(path.join(__dirname, '../public/admin.html'))
+);
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -60,6 +80,12 @@ app.use((req, res, next) => {
   express.static(path.join(__dirname, '../public'))(req, res, next);
 });
 app.use('/screenshots', express.static(path.join(__dirname, '../public/screenshots')));
+
+app.use((req, res, next) => {
+  const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html'];
+  if (blocked.includes(req.path)) return next();
+  express.static(path.join(__dirname, '../public'))(req, res, next);
+});
 
 // Protected pages - require demo login
 app.get('/', requireDemoAuth, (req, res) =>
