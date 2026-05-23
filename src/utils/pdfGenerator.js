@@ -10,7 +10,7 @@ async function generatePDF(docData, outputStream) {
     info: {
       Title: docData.title,
       Author: docData.issued_by,
-      Subject: 'Official Academic Certificate',
+      Subject: 'Official Academic Document',
       Keywords: 'verified, authenticated, UniVerify',
       CreationDate: new Date(docData.issue_date),
     },
@@ -41,10 +41,12 @@ async function generatePDF(docData, outputStream) {
   function corner(x, y, rx, ry) {
     doc.save();
     doc.translate(x, y).rotate(0);
-    doc.moveTo(rx * 0, ry * 8).lineTo(rx * 5, ry * 0).lineTo(rx * 10, ry * 8).lineTo(rx * 5, ry * 16).closePath().fillColor(GOLD).fill();
+    doc.moveTo(rx * 0, ry * 8).lineTo(rx * 5, ry * 0).lineTo(rx * 10, ry * 8).lineTo(rx * 5, ry * 16)
+       .closePath().fillColor(GOLD).fill();
     doc.restore();
   }
-  [[28, 28, 1, 1], [W - 48, 28, 1, 1], [28, H - 50, 1, 1], [W - 48, H - 50, 1, 1]].forEach(([x, y, rx, ry]) => corner(x, y, rx, ry));
+  [[28, 28, 1, 1], [W - 48, 28, 1, 1], [28, H - 50, 1, 1], [W - 48, H - 50, 1, 1]]
+    .forEach(([x, y, rx, ry]) => corner(x, y, rx, ry));
 
   // NAVY HEADER BAND
   doc.rect(30, 30, W - 60, 90).fill(NAVY);
@@ -52,56 +54,122 @@ async function generatePDF(docData, outputStream) {
   doc.rect(30, 117, W - 60, 3).fill(GOLD);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor(GOLD)
-     .text(docData.issued_by.toUpperCase(), 30, 48, { width: W - 60, align: 'center', characterSpacing: 3 });
+     .text(docData.issued_by.toUpperCase(), 30, 48, {
+       width: W - 60, align: 'center', characterSpacing: 3
+     });
 
   doc.font('Helvetica').fontSize(8.5).fillColor('#8AADCC')
-     .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', 30, 72, { width: W - 60, align: 'center', characterSpacing: 1.5 });
+     .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', 30, 72, {
+       width: W - 60, align: 'center', characterSpacing: 1.5
+     });
 
   // UniVerify badge
   doc.roundedRect(W - 130, 36, 96, 22, 4).fill('#0D2D4A');
   doc.circle(W - 120, 47, 5).fill(GOLD2);
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GOLD2)
-     .text('UNIVERIFY SECURED', W - 112, 41, { width: 76, align: 'center', characterSpacing: 0.8 });
+     .text('UNIVERIFY SECURED', W - 112, 41, {
+       width: 76, align: 'center', characterSpacing: 0.8
+     });
 
   // DECORATIVE RULE
-  doc.moveTo(W / 2 - 6, 128).lineTo(W / 2, 122).lineTo(W / 2 + 6, 128).lineTo(W / 2, 134).closePath().fill(GOLD);
+  doc.moveTo(W / 2 - 6, 128).lineTo(W / 2, 122).lineTo(W / 2 + 6, 128)
+     .lineTo(W / 2, 134).closePath().fill(GOLD);
   doc.moveTo(50, 128).lineTo(W / 2 - 14, 128).strokeColor(GOLD).lineWidth(0.7).stroke();
   doc.moveTo(W / 2 + 14, 128).lineTo(W - 50, 128).strokeColor(GOLD).lineWidth(0.7).stroke();
 
+  // ── DYNAMIC TEXT BASED ON DOCUMENT TYPE ──────────────────────────────────
+  const docTypeLower = (docData.doc_type || '').toLowerCase();
+
+  let preamble  = 'THIS IS TO CERTIFY THAT';
+  let awardLine = 'HAS BEEN DULY AWARDED THE DEGREE OF';
+
+  if (docTypeLower.includes('transcript')) {
+    preamble  = 'THIS IS TO CERTIFY THAT THE ACADEMIC RECORDS BELOW';
+    awardLine = 'BELONG TO THE FOLLOWING STUDENT';
+  } else if (docTypeLower.includes('attestation')) {
+    preamble  = 'THIS IS TO ATTEST THAT';
+    awardLine = 'HAS SATISFACTORILY COMPLETED ALL REQUIREMENTS FOR';
+  } else if (docTypeLower.includes('letter')) {
+    preamble  = 'THIS LETTER CERTIFIES THAT';
+    awardLine = 'IS KNOWN TO THIS INSTITUTION IN THE FOLLOWING CAPACITY';
+  } else if (docTypeLower.includes('diploma')) {
+    preamble  = 'THIS IS TO CERTIFY THAT';
+    awardLine = 'HAS BEEN DULY AWARDED THE DIPLOMA OF';
+  } else if (docTypeLower.includes('result') || docTypeLower.includes('statement')) {
+    preamble  = 'THIS IS TO CERTIFY THAT THE RESULTS BELOW';
+    awardLine = 'ARE THE OFFICIAL ACADEMIC RESULTS OF';
+  } else if (docTypeLower.includes('admission')) {
+    preamble  = 'THIS IS TO CONFIRM THAT';
+    awardLine = 'HAS BEEN DULY ADMITTED INTO THIS INSTITUTION FOR';
+  } else if (docTypeLower.includes('completion') || docTypeLower.includes('course')) {
+    preamble  = 'THIS IS TO CERTIFY THAT';
+    awardLine = 'HAS SUCCESSFULLY COMPLETED THE PROGRAMME OF';
+  } else if (docTypeLower.includes('nysc') || docTypeLower.includes('clearance')) {
+    preamble  = 'THIS IS TO CERTIFY THAT';
+    awardLine = 'HAS BEEN DULY CLEARED AND ISSUED THE FOLLOWING';
+  }
+
   // PREAMBLE
   doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
-     .text('THIS IS TO CERTIFY THAT', 0, 148, { width: W, align: 'center', characterSpacing: 2 });
+     .text(preamble, 0, 148, { width: W, align: 'center', characterSpacing: 2 });
 
-  // GRADUATE NAME
-  doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
-     .text(docData.issued_to, 60, 170, { width: W - 120, align: 'center' });
+  // For transcripts, name comes after the award line, so swap order
+  const isTranscriptStyle = docTypeLower.includes('transcript') ||
+                            docTypeLower.includes('result') ||
+                            docTypeLower.includes('statement');
 
-  const nameBottom = doc.y + 4;
-  doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom).strokeColor(GOLD).lineWidth(1).stroke();
+  if (isTranscriptStyle) {
+    // Award line first, then name
+    doc.moveDown(0.5);
+    doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
+       .text(awardLine, 0, doc.y, { width: W, align: 'center', characterSpacing: 1.5 });
 
-  // HAS BEEN AWARDED
-  doc.moveDown(0.8);
-  doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
-     .text('HAS BEEN DULY AWARDED THE DEGREE OF', 0, doc.y, { width: W, align: 'center', characterSpacing: 1.5 });
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
+       .text(docData.issued_to, 60, doc.y, { width: W - 120, align: 'center' });
+  } else {
+    // Standard: name first, then award line
+    doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
+       .text(docData.issued_to, 60, 170, { width: W - 120, align: 'center' });
 
-  // DEGREE TITLE
+    const nameBottom = doc.y + 4;
+    doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom)
+       .strokeColor(GOLD).lineWidth(1).stroke();
+
+    doc.moveDown(0.8);
+    doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
+       .text(awardLine, 0, doc.y, { width: W, align: 'center', characterSpacing: 1.5 });
+  }
+
+  // NAME UNDERLINE for transcript style
+  if (isTranscriptStyle) {
+    const nameBottom = doc.y + 4;
+    doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom)
+       .strokeColor(GOLD).lineWidth(1).stroke();
+  }
+
+  // DOCUMENT TITLE
   doc.moveDown(0.5);
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(NAVY)
+  const titleFontSize = docData.title.length > 40 ? 18 : 22;
+  doc.font('Helvetica-Bold').fontSize(titleFontSize).fillColor(NAVY)
      .text(docData.title, 60, doc.y, { width: W - 120, align: 'center' });
 
   doc.moveDown(0.4);
   const degY = doc.y;
-  doc.moveTo(W / 2 - 80, degY).lineTo(W / 2 + 80, degY).strokeColor(GOLD2).lineWidth(1.5).stroke();
+  doc.moveTo(W / 2 - 80, degY).lineTo(W / 2 + 80, degY)
+     .strokeColor(GOLD2).lineWidth(1.5).stroke();
 
   // DOC TYPE BADGE
   if (docData.doc_type) {
     doc.moveDown(0.6);
-    const badgeW = 180;
+    const badgeW = 200;
     const badgeX = (W - badgeW) / 2;
     doc.roundedRect(badgeX, doc.y, badgeW, 22, 11).fill(LGRAY);
     doc.roundedRect(badgeX, doc.y, badgeW, 22, 11).lineWidth(0.8).strokeColor(GOLD).stroke();
     doc.font('Helvetica-Bold').fontSize(8.5).fillColor(NAVY)
-       .text(docData.doc_type.toUpperCase(), badgeX, doc.y + 6, { width: badgeW, align: 'center', characterSpacing: 2 });
+       .text(docData.doc_type.toUpperCase(), badgeX, doc.y + 6, {
+         width: badgeW, align: 'center', characterSpacing: 2
+       });
     doc.moveDown(0.2);
   }
 
@@ -118,18 +186,26 @@ async function generatePDF(docData, outputStream) {
   const qrX     = W - 72 - qrSize;
   const qrY     = detailY;
 
-  const issueDate  = new Date(docData.issue_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-  const expiryDate = docData.expiry_date ? new Date(docData.expiry_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : null;
+  const issueDate  = new Date(docData.issue_date).toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'long', year: 'numeric'
+  });
+  const expiryDate = docData.expiry_date
+    ? new Date(docData.expiry_date).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'long', year: 'numeric'
+      })
+    : null;
 
   function detailField(label, value, x, y) {
-    doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY).text(label.toUpperCase(), x, y, { characterSpacing: 1 });
-    doc.font('Helvetica-Bold').fontSize(10.5).fillColor(DGRAY).text(value, x, y + 12, { width: 180 });
+    doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY)
+       .text(label.toUpperCase(), x, y, { characterSpacing: 1 });
+    doc.font('Helvetica-Bold').fontSize(10.5).fillColor(DGRAY)
+       .text(value, x, y + 12, { width: 180 });
   }
 
-  detailField('Document ID',       docData.doc_id,    col1X, detailY);
-  detailField('Date of Issue',     issueDate,          col1X, detailY + 56);
+  detailField('Document ID',         docData.doc_id,    col1X, detailY);
+  detailField('Date of Issue',       issueDate,          col1X, detailY + 56);
   if (expiryDate) detailField('Valid Until', expiryDate, col1X, detailY + 112);
-  detailField('Issuing Institution', docData.issued_by, col2X, detailY);
+  detailField('Issuing Institution', docData.issued_by,  col2X, detailY);
 
   const extraFields = Object.entries(docData.metadata || {})
     .filter(([k, v]) => typeof v === 'string' && k !== 'matric_number')
@@ -137,17 +213,23 @@ async function generatePDF(docData, outputStream) {
 
   if (extraFields.length > 0) {
     extraFields.forEach(([k, v], i) => {
-      detailField(k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), v, col2X, detailY + 56 + i * 56);
+      detailField(
+        k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        v, col2X, detailY + 56 + i * 56
+      );
     });
   } else if (docData.doc_type) {
     detailField('Document Type', docData.doc_type, col2X, detailY + 56);
   }
 
   // QR CODE
-  doc.roundedRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 32, 6).lineWidth(0.8).strokeColor(GOLD).fill(WHITE).stroke();
+  doc.roundedRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 32, 6)
+     .lineWidth(0.8).strokeColor(GOLD).fill(WHITE).stroke();
   doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
   doc.font('Helvetica-Bold').fontSize(6.5).fillColor(NAVY)
-     .text('SCAN TO VERIFY', qrX - 8, qrY + qrSize + 6, { width: qrSize + 16, align: 'center', characterSpacing: 1 });
+     .text('SCAN TO VERIFY', qrX - 8, qrY + qrSize + 6, {
+       width: qrSize + 16, align: 'center', characterSpacing: 1
+     });
 
   // SIGNATURE AREA
   const sigY = detailY + 175;
@@ -171,9 +253,12 @@ async function generatePDF(docData, outputStream) {
   }
 
   function sigLine(x, label) {
-    doc.moveTo(x, sigY + 44).lineTo(x + 120, sigY + 44).strokeColor(NAVY).lineWidth(0.6).stroke();
+    doc.moveTo(x, sigY + 44).lineTo(x + 120, sigY + 44)
+       .strokeColor(NAVY).lineWidth(0.6).stroke();
     doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY)
-       .text(label.toUpperCase(), x, sigY + 50, { width: 120, align: 'center', characterSpacing: 0.8 });
+       .text(label.toUpperCase(), x, sigY + 50, {
+         width: 120, align: 'center', characterSpacing: 0.8
+       });
   }
 
   sigLine(sig1X, 'Registrar');
@@ -188,15 +273,23 @@ async function generatePDF(docData, outputStream) {
   doc.rect(30, authY, W - 60, 44).fill(LGRAY);
   doc.rect(30, authY, W - 60, 44).lineWidth(0.5).strokeColor('#D0D5DD').stroke();
   doc.circle(48, authY + 22, 8).fill(NAVY);
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(WHITE).text('✓', 40, authY + 16, { width: 16, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(NAVY).text('DIGITALLY AUTHENTICATED DOCUMENT', 62, authY + 8, { characterSpacing: 1 });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(WHITE)
+     .text('✓', 40, authY + 16, { width: 16, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(NAVY)
+     .text('DIGITALLY AUTHENTICATED DOCUMENT', 62, authY + 8, { characterSpacing: 1 });
   doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY)
-     .text(`This document is digitally registered and authenticated. Verify at: ${verifyUrl}  ·  Document ID: ${docData.doc_id}`, 62, authY + 22, { width: W - 110, lineGap: 1 });
+     .text(
+       `This document is digitally registered and authenticated. Verify at: ${verifyUrl}  ·  Document ID: ${docData.doc_id}`,
+       62, authY + 22, { width: W - 110, lineGap: 1 }
+     );
 
   // NAVY FOOTER BAND
   doc.rect(30, H - 46, W - 60, 16).fill(NAVY);
   doc.font('Helvetica').fontSize(7).fillColor('#6699BB')
-     .text(`Powered by UniVerify  ·  verify.akeenalee.com  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`, 30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 });
+     .text(
+       `Powered by UniVerify  ·  verify.akeenalee.com  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`,
+       30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 }
+     );
 
   // BOTTOM GOLD RULE
   doc.rect(30, H - 30, W - 60, 3).fill(GOLD);
