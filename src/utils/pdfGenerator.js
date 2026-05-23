@@ -1,7 +1,14 @@
 const PDFDocument = require('pdfkit');
 const { generateQRBuffer, buildVerifyUrl } = require('./docUtils');
+const { generateTranscript } = require('./transcriptGenerator');
 
 async function generatePDF(docData, outputStream) {
+  // Route transcript types to dedicated multi-page transcript generator
+  const docTypeLower = (docData.doc_type || '').toLowerCase();
+  if (docTypeLower.includes('transcript')) {
+    return generateTranscript(docData, outputStream);
+  }
+
   const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id);
 
   const doc = new PDFDocument({
@@ -77,16 +84,11 @@ async function generatePDF(docData, outputStream) {
   doc.moveTo(50, 128).lineTo(W / 2 - 14, 128).strokeColor(GOLD).lineWidth(0.7).stroke();
   doc.moveTo(W / 2 + 14, 128).lineTo(W - 50, 128).strokeColor(GOLD).lineWidth(0.7).stroke();
 
-  // ── DYNAMIC TEXT BASED ON DOCUMENT TYPE ──────────────────────────────────
-  const docTypeLower = (docData.doc_type || '').toLowerCase();
-
+  // DYNAMIC TEXT BASED ON DOCUMENT TYPE
   let preamble  = 'THIS IS TO CERTIFY THAT';
   let awardLine = 'HAS BEEN DULY AWARDED THE DEGREE OF';
 
-  if (docTypeLower.includes('transcript')) {
-    preamble  = 'THIS IS TO CERTIFY THAT THE ACADEMIC RECORDS BELOW';
-    awardLine = 'BELONG TO THE FOLLOWING STUDENT';
-  } else if (docTypeLower.includes('attestation')) {
+  if (docTypeLower.includes('attestation')) {
     preamble  = 'THIS IS TO ATTEST THAT';
     awardLine = 'HAS SATISFACTORILY COMPLETED ALL REQUIREMENTS FOR';
   } else if (docTypeLower.includes('letter')) {
@@ -113,39 +115,27 @@ async function generatePDF(docData, outputStream) {
   doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
      .text(preamble, 0, 148, { width: W, align: 'center', characterSpacing: 2 });
 
-  // For transcripts, name comes after the award line, so swap order
-  const isTranscriptStyle = docTypeLower.includes('transcript') ||
-                            docTypeLower.includes('result') ||
-                            docTypeLower.includes('statement');
+  const isResultStyle = docTypeLower.includes('result') || docTypeLower.includes('statement');
 
-  if (isTranscriptStyle) {
-    // Award line first, then name
+  if (isResultStyle) {
     doc.moveDown(0.5);
     doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
        .text(awardLine, 0, doc.y, { width: W, align: 'center', characterSpacing: 1.5 });
-
     doc.moveDown(0.5);
     doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
        .text(docData.issued_to, 60, doc.y, { width: W - 120, align: 'center' });
-  } else {
-    // Standard: name first, then award line
-    doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
-       .text(docData.issued_to, 60, 170, { width: W - 120, align: 'center' });
-
     const nameBottom = doc.y + 4;
     doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom)
        .strokeColor(GOLD).lineWidth(1).stroke();
-
+  } else {
+    doc.font('Helvetica-Bold').fontSize(28).fillColor(NAVY)
+       .text(docData.issued_to, 60, 170, { width: W - 120, align: 'center' });
+    const nameBottom = doc.y + 4;
+    doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom)
+       .strokeColor(GOLD).lineWidth(1).stroke();
     doc.moveDown(0.8);
     doc.font('Helvetica').fontSize(10).fillColor(MGRAY)
        .text(awardLine, 0, doc.y, { width: W, align: 'center', characterSpacing: 1.5 });
-  }
-
-  // NAME UNDERLINE for transcript style
-  if (isTranscriptStyle) {
-    const nameBottom = doc.y + 4;
-    doc.moveTo(W / 2 - 100, nameBottom).lineTo(W / 2 + 100, nameBottom)
-       .strokeColor(GOLD).lineWidth(1).stroke();
   }
 
   // DOCUMENT TITLE
