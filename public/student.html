@@ -310,42 +310,47 @@ document.getElementById('buy-tab-btn').addEventListener('click', () => {
 });
 async function loadMyDocs() {
   const list = document.getElementById('my-docs-list');
+  list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">Loading your documents...</p>';
   try {
-    const meRes = await fetch(`${BASE}/api/tokens/me`);
-    const meData = await meRes.json();
-    const matric = meData.student?.matric_number;
-    const institution = meData.student?.institution;
-    if (!matric) return;
-
-    const res  = await fetch(`${BASE}/verify/api/search?q=${encodeURIComponent(matric)}&institution=${encodeURIComponent(institution)}`);
+    // Use the dedicated my-documents endpoint which matches by metadata->matric_number
+    const res  = await fetch(`${BASE}/api/tokens/my-documents`);
+    if (!res.ok) throw new Error('Failed to fetch documents.');
     const data = await res.json();
-    const docs = data.results || [];
+    const docs = data.documents || [];
 
     if (!docs.length) {
-      list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">No documents found under your matric number. Contact your Registrar if you believe this is an error.</p>';
+      list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">No documents found under your matric number (<strong>' + esc(data.matric_number || '') + '</strong>).<br/>Ask your Registrar to generate your document using your matric number.</p>';
       return;
     }
 
-    list.innerHTML = docs.map(doc => `
-      <div style="border:1px solid #eee;border-radius:10px;padding:14px;margin-bottom:10px">
-        <div style="font-size:14px;font-weight:600;color:#1a3a5c;margin-bottom:4px">${esc(doc.title)}</div>
+    list.innerHTML = docs.map(doc => {
+      const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+      const statusColor = doc.status === 'active' && !isExpired ? '#0f6e56' : '#A32D2D';
+      const statusLabel = doc.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+      return `
+      <div style="border:1px solid #eee;border-radius:10px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:600;color:#1a3a5c">${esc(doc.title)}</div>
+          <span style="font-size:11px;font-weight:600;color:${statusColor};background:${doc.status === 'active' && !isExpired ? '#e1f5ee' : '#fcebeb'};padding:2px 8px;border-radius:10px;white-space:nowrap;margin-left:8px">${statusLabel}</span>
+        </div>
+        <div style="font-size:12px;color:#888;margin-bottom:2px">Document type: <strong style="color:#444">${esc(doc.doc_type || 'N/A')}</strong></div>
         <div style="font-size:12px;color:#888;margin-bottom:2px">Issued by: ${esc(doc.issued_by)}</div>
         <div style="font-size:12px;color:#888;margin-bottom:8px">Issue date: ${fmtDate(doc.issue_date)}</div>
-        <div style="font-size:11px;font-family:monospace;color:#555;margin-bottom:10px">${esc(doc.doc_id)}</div>
+        <div style="font-size:11px;font-family:monospace;color:#999;margin-bottom:12px">${esc(doc.doc_id)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <a href="${BASE}/verify?doc=${encodeURIComponent(doc.doc_id)}" target="_blank"
-             style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px">
-            Verify page
+             style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:6px 14px;border-radius:6px">
+            View Verify Page
           </a>
           <a href="${BASE}/api/tokens/replacement-pdf/${encodeURIComponent(doc.doc_id)}" target="_blank"
-             style="font-size:12px;color:#fff;font-weight:500;text-decoration:none;background:#1a3a5c;padding:5px 12px;border-radius:6px">
+             style="font-size:12px;color:#fff;font-weight:500;text-decoration:none;background:#1a3a5c;padding:6px 14px;border-radius:6px">
             Download Official PDF
           </a>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
-    list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">Failed to load documents.</p>';
+    list.innerHTML = '<p style="font-size:13px;color:#c0392b;text-align:center;padding:20px">Failed to load documents. Please try again.</p>';
   }
 }
 async function loadBundles() {
