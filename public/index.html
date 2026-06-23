@@ -101,8 +101,10 @@
     <input type="text" id="g-issuedTo" placeholder="Company or person name"/>
     <label>Issued by</label>
     <input type="text" id="g-issuedBy" placeholder="Your organisation name"/>
+    <label>Matric Number <span style="color:#c0392b;font-weight:700">*</span></label>
+    <input type="text" id="g-matric" placeholder="e.g. CS/2020/001  or  BUK/18/SCI/001"/>
     <label>Document type</label>
-    <input type="text" id="g-docType" placeholder="Certificate, Invoice, Letter..."/>
+    <input type="text" id="g-docType" placeholder="Certificate, Transcript, Diploma..."/>
     <label>Expiry date (optional)</label>
     <input type="date" id="g-expiry"/>
     <label>ID prefix (optional)</label>
@@ -391,6 +393,7 @@
     const title    = document.getElementById('g-title').value.trim();
     const issuedTo = document.getElementById('g-issuedTo').value.trim();
     const issuedBy = document.getElementById('g-issuedBy').value.trim();
+    const matric   = document.getElementById('g-matric').value.trim().toUpperCase();
     const docType  = document.getElementById('g-docType').value.trim();
     const expiry   = document.getElementById('g-expiry').value;
     const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
@@ -398,8 +401,8 @@
     const btn      = document.getElementById('g-btn');
     errEl.classList.remove('show');
 
-    if (!title || !issuedTo || !issuedBy) {
-      errEl.textContent = 'Title, Issued To, and Issued By are required.';
+    if (!title || !issuedTo || !issuedBy || !matric) {
+      errEl.textContent = 'Title, Issued To, Issued By, and Matric Number are all required.';
       errEl.classList.add('show');
       return;
     }
@@ -411,7 +414,7 @@
       const res  = await fetch(BASE + '/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix })
+        body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix, metadata: { matric_number: matric } })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed.');
@@ -420,7 +423,8 @@
       document.getElementById('g-qr').src = data.qr.dataUrl;
       document.getElementById('g-docid').textContent = doc.doc_id;
       document.getElementById('g-fields').innerHTML =
-        '<div class="field-row"><span>Issued To</span><span>' + esc(doc.issued_to) + '</span></div>'
+        '<div class="field-row"><span>Matric Number</span><span>' + esc(matric) + '</span></div>'
+        + '<div class="field-row"><span>Issued To</span><span>' + esc(doc.issued_to) + '</span></div>'
         + '<div class="field-row"><span>Issued By</span><span>' + esc(doc.issued_by) + '</span></div>'
         + '<div class="field-row"><span>Type</span><span>' + esc(doc.doc_type || 'N/A') + '</span></div>'
         + '<div class="field-row"><span>Issue Date</span><span>' + fmtDate(doc.issue_date) + '</span></div>'

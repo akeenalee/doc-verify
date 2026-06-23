@@ -90,6 +90,37 @@ router.get('/me', requireStudentAuth, async (req, res) => {
   }
 });
 
+// GET /api/tokens/my-documents — all documents belonging to this student by matric number
+router.get('/my-documents', requireStudentAuth, async (req, res) => {
+  try {
+    const student = await pool.query(
+      'SELECT matric_number, institution FROM student_tokens WHERE id=$1',
+      [req.session.studentId]
+    );
+    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
+
+    const { matric_number } = student.rows[0];
+
+    // Match by matric number in metadata only — institution match is intentionally relaxed
+    // because the Registrar types institution name into issued_by which may differ from
+    // what the student typed at registration
+    const docs = await pool.query(
+      `SELECT doc_id, title, issued_to, issued_by, doc_type, issue_date,
+              expiry_date, status, metadata, created_at
+       FROM documents
+       WHERE LOWER(metadata->>'matric_number') = LOWER($1)
+       ORDER BY created_at DESC`,
+      [matric_number]
+    );
+
+    res.json({ documents: docs.rows, total: docs.rows.length, matric_number });
+  } catch (err) {
+    console.error('My documents error:', err);
+    res.status(500).json({ error: 'Failed to fetch documents.' });
+  }
+});
+
+// GET /api/tokens/log — verification history for this student's documents
 router.get('/log', requireStudentAuth, async (req, res) => {
   try {
     const student = await pool.query(
@@ -212,6 +243,7 @@ router.patch('/notifications', requireStudentAuth, async (req, res) => {
 });
 
 // GET /api/tokens/replacement-pdf/:docId
+// Matches by matric number only — institution relaxed intentionally
 router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
   const { docId } = req.params;
 
@@ -222,14 +254,15 @@ router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
     );
     if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
 
-    const { matric_number, institution } = student.rows[0];
+    const { matric_number } = student.rows[0];
 
+    // Match by doc_id AND matric_number only — drop institution match
+    // because issued_by on the document may differ from institution on student record
     const docResult = await pool.query(
       `SELECT * FROM documents
        WHERE doc_id = $1
-       AND issued_by ILIKE $2
-       AND LOWER(metadata->>'matric_number') = LOWER($3)`,
-      [docId, `%${institution}%`, matric_number]
+       AND LOWER(metadata->>'matric_number') = LOWER($2)`,
+      [docId, matric_number]
     );
 
     if (!docResult.rows.length) {
@@ -241,7 +274,9 @@ router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
     await pool.query(
       `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
        VALUES ($1, $2, $3, 'found', 'replacement_pdf')`,
-      [docId, req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, req.headers['user-agent'] || '']
+      [docId,
+       req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress,
+       req.headers['user-agent'] || '']
     );
 
     const { generatePDF } = require('../utils/pdfGenerator');
