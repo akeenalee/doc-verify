@@ -1,11 +1,10 @@
 require('dotenv').config();
-const express   = require('express');
-const helmet    = require('helmet');
-const cors      = require('cors');
-const path      = require('path');
-const session   = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
-const pool      = require('./db/pool');
+const express = require('express');
+const helmet  = require('helmet');
+const cors    = require('cors');
+const path    = require('path');
+const session = require('express-session');
+const pool    = require('./db/pool');
 
 const documentsRouter = require('./routes/documents');
 const verifyRouter    = require('./routes/verify');
@@ -43,12 +42,17 @@ app.use('/api/webhook', webhookRouter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Use pg session store in production (Render), memory store locally
+const sessionStore = process.env.NODE_ENV === 'production'
+  ? new (require('connect-pg-simple')(session))({
+      pool,
+      tableName:            'session',
+      createTableIfMissing: true,
+    })
+  : undefined;
+
 app.use(session({
-  store: new pgSession({
-    pool,
-    tableName:            'session',
-    createTableIfMissing: true,
-  }),
+  store:             sessionStore,
   secret:            process.env.DOC_SECRET || 'change-this-secret',
   resave:            false,
   saveUninitialized: false,
