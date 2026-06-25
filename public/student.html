@@ -471,6 +471,11 @@ async function getLocation(ip) {
   } catch { return 'Unknown'; }
 }
 
+function fmtDate(d) {
+  if (!d) return 'N/A';
+  return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+}
+
 function fmtDateTime(d) {
   if (!d) return 'N/A';
   return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
