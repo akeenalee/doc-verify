@@ -1,9 +1,11 @@
 require('dotenv').config();
-const express = require('express');
-const helmet  = require('helmet');
-const cors    = require('cors');
-const path    = require('path');
-const session = require('express-session');
+const express   = require('express');
+const helmet    = require('helmet');
+const cors      = require('cors');
+const path      = require('path');
+const session   = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
+const pool      = require('./db/pool');
 
 const documentsRouter = require('./routes/documents');
 const verifyRouter    = require('./routes/verify');
@@ -42,12 +44,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 app.use(session({
+  store: new pgSession({
+    pool,
+    tableName:            'session',
+    createTableIfMissing: true,
+  }),
   secret:            process.env.DOC_SECRET || 'change-this-secret',
   resave:            false,
   saveUninitialized: false,
   cookie: {
     secure:   process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge:   7 * 24 * 60 * 60 * 1000,
   },
 }));
