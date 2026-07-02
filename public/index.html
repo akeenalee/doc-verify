@@ -51,6 +51,43 @@
     .links a.primary:hover{background:#15304d}
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
     @keyframes spin{to{transform:rotate(360deg)}}
+    /* ── LOADING SCREEN ──────────────────────────────────────────────────── */
+    #loader-screen{
+      position:fixed;inset:0;z-index:9999;
+      background:#0D1B2A;
+      display:flex;align-items:center;justify-content:center;
+      padding:24px;
+      transition:opacity 0.6s ease;
+    }
+    #loader-screen.fade-out{opacity:0;pointer-events:none}
+    #loader-screen.hidden{display:none}
+    .ld-wrap{text-align:center;max-width:420px;width:100%}
+    .ld-logo{font-size:34px;font-weight:700;color:#fff;margin-bottom:5px;letter-spacing:-0.5px}
+    .ld-logo span{color:#C9A84C}
+    .ld-tagline{font-size:12px;color:#8899AA;margin-bottom:48px;letter-spacing:0.3px}
+    .ld-shield{position:relative;width:88px;height:88px;margin:0 auto 36px}
+    .ld-ring{position:absolute;inset:0;border-radius:50%;border:2px solid #1A3A5C;border-top-color:#C9A84C;animation:ldSpin 1.4s linear infinite}
+    .ld-ring.slow{width:70px;height:70px;top:9px;left:9px;border-top-color:transparent;border-right-color:#006D77;animation-duration:2.2s;animation-direction:reverse}
+    .ld-inner{position:absolute;inset:18px;border-radius:50%;background:#0A1929;display:flex;align-items:center;justify-content:center}
+    .ld-icon{font-size:22px;animation:ldPulse 2s ease-in-out infinite}
+    @keyframes ldSpin{to{transform:rotate(360deg)}}
+    @keyframes ldPulse{0%,100%{opacity:0.6;transform:scale(0.95)}50%{opacity:1;transform:scale(1.05)}}
+    .ld-status{font-size:15px;font-weight:600;color:#fff;margin-bottom:7px;min-height:24px}
+    .ld-sub{font-size:12px;color:#8899AA;margin-bottom:32px;min-height:18px}
+    .ld-track{background:#1A3A5C;border-radius:8px;height:4px;overflow:hidden;margin-bottom:32px}
+    .ld-fill{height:100%;background:linear-gradient(90deg,#006D77,#C9A84C);border-radius:8px;width:0%;transition:width 0.5s ease}
+    .ld-steps{display:flex;justify-content:center;gap:28px;margin-bottom:40px}
+    .ld-step{display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0.3;transition:opacity 0.5s}
+    .ld-step.active{opacity:1}
+    .ld-step.done{opacity:0.65}
+    .ld-dot{width:28px;height:28px;border-radius:50%;background:#1A3A5C;border:1.5px solid #1A3A5C;display:flex;align-items:center;justify-content:center;font-size:11px;color:#8899AA;transition:all 0.4s}
+    .ld-step.active .ld-dot{background:#0A1929;border-color:#C9A84C;color:#C9A84C;box-shadow:0 0 12px rgba(201,168,76,0.3)}
+    .ld-step.done .ld-dot{background:#006D77;border-color:#006D77;color:#fff}
+    .ld-slabel{font-size:9px;color:#8899AA;text-align:center;max-width:56px;line-height:1.3}
+    .ld-step.active .ld-slabel{color:#C9A84C}
+    .ld-step.done .ld-slabel{color:#006D77}
+    .ld-footer{font-size:11px;color:#445566;line-height:1.6}
+    .ld-footer strong{color:#8899AA}
     .err{color:#A32D2D;font-size:13px;margin-top:10px;display:none}
     .err.show{display:block}
     .log-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -73,6 +110,96 @@
   </style>
 </head>
 <body>
+
+<!-- ── LOADING SCREEN ──────────────────────────────────────────────────── -->
+<div id="loader-screen">
+  <div class="ld-wrap">
+    <div class="ld-logo">Uni<span>Verify</span></div>
+    <div class="ld-tagline">Africa's Trusted Digital Academic Credential Infrastructure</div>
+    <div class="ld-shield">
+      <div class="ld-ring"></div>
+      <div class="ld-ring slow"></div>
+      <div class="ld-inner"><div class="ld-icon">🔐</div></div>
+    </div>
+    <div class="ld-status" id="ld-status">Initialising secure connection</div>
+    <div class="ld-sub" id="ld-sub">Please wait a moment...</div>
+    <div class="ld-track"><div class="ld-fill" id="ld-fill"></div></div>
+    <div class="ld-steps">
+      <div class="ld-step active" id="ld-s1"><div class="ld-dot">1</div><div class="ld-slabel">Waking server</div></div>
+      <div class="ld-step" id="ld-s2"><div class="ld-dot">2</div><div class="ld-slabel">Connecting database</div></div>
+      <div class="ld-step" id="ld-s3"><div class="ld-dot">3</div><div class="ld-slabel">Loading platform</div></div>
+      <div class="ld-step" id="ld-s4"><div class="ld-dot">✓</div><div class="ld-slabel">Ready</div></div>
+    </div>
+    <div class="ld-footer"><strong>verify.akeenalee.com</strong><br/>Innovation Lens Resources Ltd &nbsp;·&nbsp; Secured by UniVerify</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const MIN_MS  = 10000; // always show for at least 10 seconds
+  const start   = Date.now();
+  let phase     = 1;
+
+  const statusEl = document.getElementById('ld-status');
+  const subEl    = document.getElementById('ld-sub');
+  const fillEl   = document.getElementById('ld-fill');
+
+  const phases = [
+    { status: 'Initialising secure connection',  sub: 'Setting up the verification platform...' },
+    { status: 'Establishing secure session',     sub: 'Connecting to the database...' },
+    { status: 'Loading verification records',    sub: 'Almost ready...' },
+    { status: 'Platform ready',                  sub: 'Welcome to UniVerify' },
+  ];
+
+  function setStep(n) {
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById('ld-s' + i);
+      el.classList.remove('active','done');
+      if (i < n) el.classList.add('done');
+      else if (i === n) el.classList.add('active');
+    }
+  }
+
+  function setPhase(n) {
+    if (n === phase) return;
+    phase = n;
+    const p = phases[n-1];
+    statusEl.textContent = p.status;
+    subEl.textContent    = p.sub;
+    setStep(n);
+  }
+
+  function tick() {
+    const elapsed = Date.now() - start;
+    const pct     = Math.min(elapsed / MIN_MS, 1);
+
+    // Progress ramp
+    fillEl.style.width = Math.min(8 + pct * 87, 95) + '%';
+
+    // Phase transitions
+    if (pct > 0.28 && phase < 2) setPhase(2);
+    if (pct > 0.58 && phase < 3) setPhase(3);
+
+    if (elapsed < MIN_MS) {
+      requestAnimationFrame(tick);
+    } else {
+      // 10 seconds done — dismiss loader
+      setPhase(4);
+      fillEl.style.width = '100%';
+      setTimeout(function() {
+        const loader = document.getElementById('loader-screen');
+        loader.classList.add('fade-out');
+        setTimeout(function() { loader.classList.add('hidden'); }, 650);
+      }, 500);
+    }
+  }
+
+  fillEl.style.width = '8%';
+  setStep(1);
+  requestAnimationFrame(tick);
+})();
+</script>
+
 
 <div class="topbar">
   <a href="/help.html">Help / How to Test</a>
