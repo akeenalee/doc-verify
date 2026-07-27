@@ -3,55 +3,141 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>UniVerify Admin Login</title>
+  <title>UniVerify Demo Access</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0A1929;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-    .card{background:#0D2137;border:1px solid #1A3A5C;border-radius:16px;max-width:400px;width:100%;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
-    .logo{font-size:24px;font-weight:700;color:#fff;margin-bottom:4px}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0D2137;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:#fff;border-radius:16px;max-width:440px;width:100%;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+    .logo{font-size:28px;font-weight:700;color:#1A3A5C;margin-bottom:4px}
     .logo span{color:#B8860B}
-    .tag{display:inline-block;font-size:10px;font-weight:700;color:#B8860B;background:#1A3A5C;padding:3px 10px;border-radius:10px;letter-spacing:1px;margin-bottom:24px;margin-top:6px}
-    label{display:block;font-size:11px;font-weight:600;color:#8AADCC;margin-bottom:5px;margin-top:16px;text-transform:uppercase;letter-spacing:0.5px}
-    input{width:100%;padding:10px 14px;background:#061525;border:1.5px solid #1A3A5C;border-radius:8px;font-size:14px;color:#fff;font-family:inherit;outline:none;transition:border 0.2s}
-    input:focus{border-color:#B8860B}
-    .btn{width:100%;padding:12px;background:#B8860B;color:#0A1929;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:24px;font-family:inherit}
-    .btn:hover{background:#D4A017}
-    .btn:disabled{background:#555;color:#888;cursor:not-allowed}
-    .err{font-size:12px;color:#f5c6c6;margin-top:10px;padding:8px 12px;background:#5A1A1A;border-radius:6px;display:none}
+    .tagline{font-size:13px;color:#888;margin-bottom:28px}
+    .divider{border:none;border-top:1px solid #eee;margin:20px 0}
+    label{display:block;font-size:12px;font-weight:600;color:#444;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px}
+    input{width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;color:#333;margin-bottom:16px;transition:border 0.2s;font-family:inherit}
+    input:focus{outline:none;border-color:#1A3A5C}
+    .btn{width:100%;padding:12px;background:#1A3A5C;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px;font-family:inherit;transition:background 0.2s}
+    .btn:hover{background:#0D2137}
+    .btn:disabled{background:#aaa;cursor:not-allowed}
+    .err{font-size:13px;color:#c0392b;margin-top:10px;display:none;padding:10px 14px;background:#fff0f0;border-radius:8px;border:1px solid #f5c6c6}
     .err.show{display:block}
-    .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(10,25,41,0.4);border-top-color:#0A1929;border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px}
+    .section-title{font-size:11px;font-weight:700;color:#B8860B;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+    .note{font-size:11px;color:#aaa;text-align:center;margin-top:20px;line-height:1.6}
+    .error-screen{display:none;text-align:center;padding:20px 0}
+    .error-screen.show{display:block}
+    .login-form{display:block}
+    .login-form.hide{display:none}
+    .error-icon{font-size:48px;margin-bottom:16px}
+    .error-title{font-size:20px;font-weight:700;color:#1A3A5C;margin-bottom:8px}
+    .error-body{font-size:13px;color:#666;line-height:1.7;margin-bottom:24px}
+    .error-contact{font-size:12px;color:#888;padding:14px;background:#f8f9fa;border-radius:8px;border:1px solid #eee}
+    .error-contact a{color:#1A3A5C;font-weight:600;text-decoration:none}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;margin-right:8px;vertical-align:middle}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .note{font-size:11px;color:#555;text-align:center;margin-top:20px}
+    .header-bar{background:#0D2137;padding:12px 20px;margin:-40px -40px 28px -40px;border-radius:16px 16px 0 0;display:flex;align-items:center;gap:10px}
+    .header-bar .dot{width:8px;height:8px;border-radius:50%;background:#B8860B}
+    .header-bar .label{font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1px;text-transform:uppercase}
   </style>
 </head>
 <body>
 <div class="card">
+  <div class="header-bar">
+    <div class="dot"></div>
+    <span class="label">Secure Demo Access</span>
+  </div>
+
+  <!-- Error screen for invalid/expired tokens -->
+  <div class="error-screen" id="error-screen">
+    <div class="error-icon" id="error-icon">🔗</div>
+    <div class="error-title" id="error-title">Link Unavailable</div>
+    <div class="error-body" id="error-body">This access link is no longer valid.</div>
+    <div class="error-contact">
+      To request a new access link, contact<br/>
+      <a href="mailto:info@akeenalee.com">info@akeenalee.com</a> &nbsp;·&nbsp;
+      <strong>Innovation Lens Resources Ltd</strong>
+    </div>
+  </div>
+
+  <!-- Login form -->
+  <div class="login-form" id="login-form">
   <div class="logo">Uni<span>Verify</span></div>
-  <div class="tag">INNOVATION LENS ADMIN</div>
+  <div class="tagline">Africa's Trusted Academic Credential Infrastructure</div>
 
+  <div class="section-title">Your Details</div>
+  <label>Full Name</label>
+  <input type="text" id="full_name" placeholder="Dr. Emeka Obi" autocomplete="name"/>
+  <label>Email Address</label>
+  <input type="email" id="email" placeholder="emeka@university.edu.ng" autocomplete="email"/>
+  <label>Institution / Company</label>
+  <input type="text" id="company" placeholder="University of Lagos"/>
+  <label>Your Role</label>
+  <input type="text" id="role" placeholder="Registrar / ICT Director / VC"/>
+
+  <hr class="divider"/>
+
+  <div class="section-title">Demo Credentials</div>
   <label>Username</label>
-  <input type="text" id="username" placeholder="Admin username" autocomplete="username"/>
+  <input type="text" id="username" placeholder="Demo username" autocomplete="username"/>
   <label>Password</label>
-  <input type="password" id="password" placeholder="Admin password" autocomplete="current-password"/>
+  <input type="password" id="password" placeholder="Demo password" autocomplete="current-password"/>
 
-  <button class="btn" id="login-btn">Access Admin Panel</button>
+  <button class="btn" id="login-btn">Access Demo Platform</button>
   <p class="err" id="err-msg"></p>
 
-  <p class="note">Restricted access. Innovation Lens personnel only.</p>
+  <p class="note">
+    This is a controlled live demo of UniVerify.<br/>
+    Contact <strong>info@akeenalee.com</strong> to request access credentials.
+  </p>
+  </div><!-- end login-form -->
 </div>
 
 <script>
-  const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin';
+  const redirect = new URLSearchParams(window.location.search).get('redirect') || '/';
+
+  // Check for error param and show appropriate screen
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    const error  = params.get('error');
+    if (!error) return;
+
+    const screen   = document.getElementById('error-screen');
+    const form     = document.getElementById('login-form');
+    const icon     = document.getElementById('error-icon');
+    const title    = document.getElementById('error-title');
+    const body     = document.getElementById('error-body');
+
+    const messages = {
+      expired_token:   { icon:'⏰', title:'This Link Has Expired', body:'The demo access link you used has expired. Please contact Innovation Lens to receive a fresh access link.' },
+      invalid_token:   { icon:'🔗', title:'Invalid Access Link',   body:'This access link is not recognised or has been revoked. Please contact Innovation Lens to receive a valid access link.' },
+      token_exhausted: { icon:'🔒', title:'Link No Longer Active', body:'This access link has reached its maximum number of uses. Please contact Innovation Lens for a new link.' },
+      server_error:    { icon:'⚠️', title:'Something Went Wrong',   body:'There was a problem processing your access link. Please try again or contact Innovation Lens for assistance.' },
+    };
+
+    const msg = messages[error] || { icon:'❌', title:'Access Denied', body:'This link could not be processed. Please contact Innovation Lens for assistance.' };
+
+    icon.textContent  = msg.icon;
+    title.textContent = msg.title;
+    body.textContent  = msg.body;
+
+    screen.classList.add('show');
+    form.classList.add('hide');
+  })();
 
   async function doLogin() {
-    const btn      = document.getElementById('login-btn');
-    const err      = document.getElementById('err-msg');
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('err-msg');
     err.classList.remove('show');
 
-    if (!username || !password) {
-      err.textContent = 'Please enter your credentials.';
+    const body = {
+      full_name: document.getElementById('full_name').value.trim(),
+      email:     document.getElementById('email').value.trim(),
+      company:   document.getElementById('company').value.trim(),
+      role:      document.getElementById('role').value.trim(),
+      username:  document.getElementById('username').value.trim(),
+      password:  document.getElementById('password').value,
+    };
+
+    if (!body.username || !body.password) {
+      err.textContent = 'Please enter your username and password.';
       err.classList.add('show');
       return;
     }
@@ -60,30 +146,31 @@
     btn.innerHTML = '<span class="spinner"></span>Verifying...';
 
     try {
-      const res  = await fetch('/admin-api/login', {
+      const res  = await fetch('/demo/login', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ username, password }),
+        body:    JSON.stringify(body),
       });
       const data = await res.json();
+
       if (res.ok && data.success) {
         window.location.href = redirect;
       } else {
-        err.textContent = data.error || 'Invalid credentials.';
+        err.textContent = data.error || 'Invalid credentials. Please try again.';
         err.classList.add('show');
         btn.disabled = false;
-        btn.textContent = 'Access Admin Panel';
+        btn.textContent = 'Access Demo Platform';
       }
     } catch (e) {
       err.textContent = 'Network error. Please try again.';
       err.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'Access Admin Panel';
+      btn.textContent = 'Access Demo Platform';
     }
   }
 
   document.getElementById('login-btn').addEventListener('click', doLogin);
-  document.getElementById('password').addEventListener('keydown', e => {
+  document.getElementById('password').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
   });
 </script>

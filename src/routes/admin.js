@@ -89,7 +89,7 @@ router.patch('/tokens/:id/activate', async (req, res) => {
       `UPDATE demo_tokens
        SET is_active  = TRUE,
            expires_at = CASE
-             WHEN expires_at IS NULL THEN NULL
+             WHEN $2 = 0 THEN NULL
              ELSE NOW() + ($2 || ' days')::INTERVAL
            END
        WHERE id = $1`,
