@@ -296,7 +296,12 @@
     loadVisitors();
   });
 
-  document.getElementById('refresh-tokens-btn').addEventListener('click', loadTokens);
+  document.getElementById('refresh-tokens-btn').addEventListener('click', async () => {
+    document.getElementById('refresh-tokens-btn').textContent = 'Refreshing...';
+    await loadTokens();
+    document.getElementById('refresh-tokens-btn').textContent = 'Refresh';
+    toast('Token list refreshed.');
+  });
   document.getElementById('refresh-visitors-btn').addEventListener('click', loadVisitors);
 
   // ── LOAD STATS ────────────────────────────────────────────────────────────
@@ -463,17 +468,24 @@
   // ── TOKEN ACTIONS ─────────────────────────────────────────────────────────
   async function revokeToken(id) {
     if (!confirm('Revoke this token? The prospect will no longer be able to access the demo with this link.')) return;
-    await fetch('/admin-api/tokens/' + id + '/revoke', { method: 'PATCH' });
-    loadTokens();
-    loadStats();
+    const res = await fetch('/admin-api/tokens/' + id + '/revoke', { method: 'PATCH' });
+    if (!res.ok) { toast('Failed to revoke token.'); return; }
+    await loadTokens();
+    await loadStats();
     toast('Token revoked.');
   }
 
   async function activateToken(id) {
-    await fetch('/admin-api/tokens/' + id + '/activate', { method: 'PATCH' });
-    loadTokens();
-    loadStats();
-    toast('Token activated.');
+    // Extend expiry by 7 days when reactivating an expired token
+    const res = await fetch('/admin-api/tokens/' + id + '/activate', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extend_days: 7 })
+    });
+    if (!res.ok) { toast('Failed to activate token.'); return; }
+    await loadTokens();
+    await loadStats();
+    toast('Token activated and extended by 7 days.');
   }
 
   function copyToClipboard(text) {

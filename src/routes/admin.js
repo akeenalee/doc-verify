@@ -79,14 +79,25 @@ router.patch('/tokens/:id/revoke', async (req, res) => {
 });
 
 // PATCH /admin/tokens/:id/activate
+// Reactivates a token and optionally extends its expiry
 router.patch('/tokens/:id/activate', async (req, res) => {
   try {
+    const extendDays = parseInt(req.body?.extend_days) || 7;
+    // Set is_active = TRUE and push expires_at forward from NOW
+    // so expired tokens become usable again immediately
     await pool.query(
-      'UPDATE demo_tokens SET is_active = TRUE WHERE id = $1',
-      [req.params.id]
+      `UPDATE demo_tokens
+       SET is_active  = TRUE,
+           expires_at = CASE
+             WHEN expires_at IS NULL THEN NULL
+             ELSE NOW() + ($2 || ' days')::INTERVAL
+           END
+       WHERE id = $1`,
+      [req.params.id, extendDays]
     );
     res.json({ success: true });
   } catch (e) {
+    console.error('Activate token error:', e.message);
     res.status(500).json({ error: 'Failed to activate token.' });
   }
 });
