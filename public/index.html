@@ -574,15 +574,17 @@
     document.getElementById('tab-other').style.cssText = acStyle +
       (tab === 'other' ? 'color:#1a3a5c;border-bottom:2px solid #1a3a5c;' : 'color:#aaa;border-bottom:2px solid transparent;');
 
-    document.getElementById('g-result').style.display = 'none';
+    document.getElementById('g-result').classList.remove('show');
     document.getElementById('g-error').classList.remove('show');
   }
 
   // ── GENERATE DOC ──────────────────────────────────────────────────────────
   async function generateDoc() {
-    const errEl = document.getElementById('g-error');
-    const btn   = document.getElementById('g-btn');
+    const errEl    = document.getElementById('g-error');
+    const btn      = document.getElementById('g-btn');
+    const resultEl = document.getElementById('g-result');
     errEl.classList.remove('show');
+    resultEl.classList.remove('show');
 
     let title, issuedTo, issuedBy, matric, docType, expiry, prefix, metadata;
 
