@@ -216,12 +216,22 @@ router.post('/api/initiate-payment', async (req, res) => {
 
   try {
     const docResult = await pool.query(
-      'SELECT doc_id, title, issued_to FROM documents WHERE doc_id = $1',
+      'SELECT doc_id, title, issued_to, status, expiry_date FROM documents WHERE doc_id = $1',
       [doc_id]
     );
     if (!docResult.rows.length) return res.status(404).json({ error: 'Document not found.' });
 
     const doc = docResult.rows[0];
+
+    // Reject payment if document is revoked
+    if (doc.status === 'revoked') {
+      return res.status(400).json({ error: 'This document has been revoked and cannot be verified.' });
+    }
+
+    // Reject payment if document has expired
+    if (doc.expiry_date && new Date(doc.expiry_date) < new Date()) {
+      return res.status(400).json({ error: 'This document has expired and cannot be verified.' });
+    }
     const { url, reference } = await initializeTransaction({
       email,
       amountKobo: VERIFY_FEE_KOBO,

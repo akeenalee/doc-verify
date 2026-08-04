@@ -98,6 +98,40 @@ if (title || issuedTo || docId) {
   document.getElementById('doc-id').textContent       = docId || 'N/A';
 }
 
+// On page load, verify document is still payable
+// Catches stale pages where document was revoked or expired after the page was opened
+if (docId) {
+  (async function checkDocStatus() {
+    try {
+      const res  = await fetch('/verify/api/' + encodeURIComponent(docId));
+      const data = await res.json();
+
+      if (!res.ok || !data.valid) {
+        const banner = document.getElementById('error-banner');
+        const btn    = document.getElementById('pay-btn');
+        const msgs   = {
+          revoked: 'This document has been revoked by the issuing institution and cannot be verified.',
+          expired: 'This document has expired and cannot be verified.',
+          not_found: 'This document could not be found. Please check the QR code and try again.',
+        };
+        const reason = data.status || 'not_found';
+        banner.textContent = msgs[reason] || 'This document is no longer available for verification.';
+        banner.classList.add('show');
+
+        // Hide payment form, show friendly block state
+        btn.disabled = true;
+        btn.textContent = 'Payment Unavailable';
+        btn.style.background = '#aaa';
+        document.getElementById('email').disabled = true;
+        document.getElementById('email').style.background = '#f5f5f5';
+      }
+    } catch (e) {
+      // Network error - allow payment to proceed, server will validate
+      console.warn('Pre-check failed:', e.message);
+    }
+  })();
+}
+
 document.getElementById('pay-btn').addEventListener('click', async () => {
   const email = document.getElementById('email').value.trim();
   const errEl = document.getElementById('err');
