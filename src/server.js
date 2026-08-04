@@ -48,6 +48,7 @@ const sessionStore = process.env.NODE_ENV === 'production'
       pool,
       tableName:            'session',
       createTableIfMissing: true,
+      pruneSessionInterval: 60 * 60,  // clean expired sessions from DB every hour
     })
   : undefined;
 
@@ -60,7 +61,7 @@ app.use(session({
     secure:   process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge:   7 * 24 * 60 * 60 * 1000,
+    maxAge:   8 * 60 * 60 * 1000,   // 8 hours — forces re-login daily
   },
 }));
 
