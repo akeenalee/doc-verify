@@ -563,21 +563,56 @@
     }
   }
 
+  // ── INSTITUTION TYPE TAB SWITCHING ────────────────────────────────────────
+  let activeGenTab = 'academic';
+
+  function switchGenTab(tab) {
+    activeGenTab = tab;
+    document.getElementById('gen-academic').style.display = tab === 'academic' ? 'block' : 'none';
+    document.getElementById('gen-other').style.display    = tab === 'other'    ? 'block' : 'none';
+
+    const acStyle = 'padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:-2px;transition:all 0.2s;';
+    document.getElementById('tab-academic').style.cssText = acStyle +
+      (tab === 'academic' ? 'color:#1a3a5c;border-bottom:2px solid #1a3a5c;' : 'color:#aaa;border-bottom:2px solid transparent;');
+    document.getElementById('tab-other').style.cssText = acStyle +
+      (tab === 'other' ? 'color:#1a3a5c;border-bottom:2px solid #1a3a5c;' : 'color:#aaa;border-bottom:2px solid transparent;');
+
+    document.getElementById('g-result').style.display = 'none';
+    document.getElementById('g-error').classList.remove('show');
+  }
+
   // ── GENERATE DOC ──────────────────────────────────────────────────────────
   async function generateDoc() {
-    const title    = document.getElementById('g-title').value.trim();
-    const issuedTo = document.getElementById('g-issuedTo').value.trim();
-    const issuedBy = document.getElementById('g-issuedBy').value.trim();
-    const matric   = document.getElementById('g-matric').value.trim().toUpperCase();
-    const docType  = document.getElementById('g-docType').value.trim();
-    const expiry   = document.getElementById('g-expiry').value;
-    const prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
-    const errEl    = document.getElementById('g-error');
-    const btn      = document.getElementById('g-btn');
+    const errEl = document.getElementById('g-error');
+    const btn   = document.getElementById('g-btn');
     errEl.classList.remove('show');
 
+    let title, issuedTo, issuedBy, matric, docType, expiry, prefix, metadata;
+
+    if (activeGenTab === 'academic') {
+      title    = document.getElementById('g-title').value.trim();
+      issuedTo = document.getElementById('g-issuedTo').value.trim();
+      issuedBy = document.getElementById('g-issuedBy').value.trim();
+      matric   = document.getElementById('g-matric').value.trim().toUpperCase();
+      docType  = document.getElementById('g-docType').value;
+      expiry   = document.getElementById('g-expiry').value;
+      prefix   = document.getElementById('g-prefix').value.trim().toUpperCase() || 'DOC';
+      metadata = { matric_number: matric, institution_type: 'academic' };
+    } else {
+      title    = document.getElementById('g-title-other').value.trim();
+      issuedTo = document.getElementById('g-issuedTo-other').value.trim();
+      issuedBy = document.getElementById('g-issuedBy-other').value.trim();
+      matric   = document.getElementById('g-ref-other').value.trim().toUpperCase();
+      docType  = document.getElementById('g-docType-other').value;
+      expiry   = document.getElementById('g-expiry-other').value;
+      prefix   = document.getElementById('g-prefix-other').value.trim().toUpperCase() || 'DOC';
+      metadata = { matric_number: matric, institution_type: 'government' };
+    }
+
     if (!title || !issuedTo || !issuedBy || !matric) {
-      errEl.textContent = 'Title, Issued To, Issued By, and Matric Number are all required.';
+      errEl.textContent = activeGenTab === 'academic'
+        ? 'Title, Issued To, Institution, and Matric Number are all required.'
+        : 'Title, Issued To, Issuing Authority, and Reference Number are all required.';
       errEl.classList.add('show');
       return;
     }
