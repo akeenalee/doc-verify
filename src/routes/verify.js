@@ -278,23 +278,23 @@ router.post('/api/initiate-payment', async (req, res) => {
 async function resolveGeo(ip) {
   if (!ip || ip === '127.0.0.1' || ip.startsWith('::')) return 'Local';
   try {
+    // Using ipinfo.io — free tier, 50k/month, works from server IPs
+    const token = process.env.IPINFO_TOKEN || '';
+    const url   = token
+      ? `https://ipinfo.io/${ip}/json?token=${token}`
+      : `https://ipinfo.io/${ip}/json`;
     return await new Promise((resolve) => {
-      const req = https.get(
-        `https://ip-api.com/json/${ip}?fields=city,country,status`,
-        { timeout: 3000 },
-        (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            try {
-              const d = JSON.parse(data);
-              resolve(d.status === 'success'
-                ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
-                : 'Unknown');
-            } catch { resolve('Unknown'); }
-          });
-        }
-      );
+      const req = https.get(url, { timeout: 3000 }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const d = JSON.parse(data);
+            if (d.bogon || d.error) { resolve('Unknown'); return; }
+            resolve([d.city, d.country].filter(Boolean).join(', ') || 'Unknown');
+          } catch { resolve('Unknown'); }
+        });
+      });
       req.on('error', () => resolve('Unknown'));
       req.on('timeout', () => { req.destroy(); resolve('Unknown'); });
     });
