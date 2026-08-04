@@ -62,23 +62,22 @@
   <div class="logo">Uni<span>Verify</span></div>
   <div class="tagline">Instant Digital Document Verification for Any Institution That Issues Official Documents</div>
 
-  <div class="section-title">Your Details</div>
-  <label>Full Name</label>
-  <input type="text" id="full_name" placeholder="Dr. Emeka Obi" autocomplete="name"/>
-  <label>Email Address</label>
-  <input type="email" id="email" placeholder="emeka@university.edu.ng" autocomplete="email"/>
-  <label>Institution / Company</label>
-  <input type="text" id="company" placeholder="University of Lagos"/>
-  <label>Your Role</label>
-  <input type="text" id="role" placeholder="Registrar / ICT Director / VC"/>
-
-  <hr class="divider"/>
-
-  <div class="section-title">Demo Credentials</div>
+  <div class="section-title">Demo Access</div>
   <label>Username</label>
   <input type="text" id="username" placeholder="Demo username" autocomplete="username"/>
   <label>Password</label>
   <input type="password" id="password" placeholder="Demo password" autocomplete="current-password"/>
+
+  <hr class="divider"/>
+
+  <div class="section-title" style="color:#999;font-weight:500">Optional &mdash; Help us personalise your demo</div>
+  <label>Your Name <span style="color:#aaa;font-weight:400">(optional)</span></label>
+  <input type="text" id="full_name" placeholder="e.g. Dr. Emeka Obi" autocomplete="name"/>
+  <label>Institution / Organisation <span style="color:#aaa;font-weight:400">(optional)</span></label>
+  <input type="text" id="company" placeholder="e.g. Ministry of Education, Lagos"/>
+  <label>Your Role <span style="color:#aaa;font-weight:400">(optional)</span></label>
+  <input type="text" id="role" placeholder="e.g. Registrar, ICT Director, DG"/>
+  <input type="hidden" id="email" value=""/>
 
   <button class="btn" id="login-btn">Access Demo Platform</button>
   <p class="err" id="err-msg"></p>

@@ -221,22 +221,70 @@
 
 <div class="grid">
   <div class="card">
-    <h2>Generate QR code</h2>
-    <label>Document title</label>
-    <input type="text" id="g-title" placeholder="Certificate of Authenticity"/>
-    <label>Issued to</label>
-    <input type="text" id="g-issuedTo" placeholder="Company or person name"/>
-    <label>Issued by</label>
-    <input type="text" id="g-issuedBy" placeholder="Your organisation name"/>
-    <label>Matric Number <span style="color:#c0392b;font-weight:700">*</span></label>
-    <input type="text" id="g-matric" placeholder="e.g. CS/2020/001  or  BUK/18/SCI/001"/>
-    <label>Document type</label>
-    <input type="text" id="g-docType" placeholder="Certificate, Transcript, Diploma..."/>
-    <label>Expiry date (optional)</label>
-    <input type="date" id="g-expiry"/>
-    <label>ID prefix (optional)</label>
-    <input type="text" id="g-prefix" placeholder="DOC" maxlength="8" style="text-transform:uppercase"/>
-    <button class="btn" id="g-btn">Generate QR code</button>
+    <h2>Generate QR Code</h2>
+
+    <!-- Institution type tabs -->
+    <div style="display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:18px">
+      <div id="tab-academic" onclick="switchGenTab('academic')" style="padding:9px 18px;font-size:13px;font-weight:600;color:#1a3a5c;border-bottom:2px solid #1a3a5c;cursor:pointer;margin-bottom:-2px;transition:all 0.2s">&#127891; Academic Institutions</div>
+      <div id="tab-other" onclick="switchGenTab('other')" style="padding:9px 18px;font-size:13px;font-weight:600;color:#aaa;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-2px;transition:all 0.2s">&#127963; Other Institutions</div>
+    </div>
+
+    <!-- Academic form -->
+    <div id="gen-academic">
+      <label>Document title</label>
+      <input type="text" id="g-title" placeholder="e.g. Bachelor of Science in Computer Science"/>
+      <label>Issued to (graduate name)</label>
+      <input type="text" id="g-issuedTo" placeholder="e.g. Amina Ibrahim"/>
+      <label>Institution name</label>
+      <input type="text" id="g-issuedBy" placeholder="e.g. University of Lagos"/>
+      <label>Matric Number <span style="color:#c0392b;font-weight:700">*</span></label>
+      <input type="text" id="g-matric" placeholder="e.g. CS/2020/001"/>
+      <label>Document type</label>
+      <select id="g-docType" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;color:#333;margin-bottom:8px">
+        <option value="Certificate">Degree Certificate</option>
+        <option value="Transcript">Academic Transcript</option>
+        <option value="Diploma">Diploma</option>
+        <option value="Attestation">Attestation Letter</option>
+        <option value="Admission">Admission Letter</option>
+        <option value="Statement of Results">Statement of Results</option>
+        <option value="Completion">Course Completion Certificate</option>
+        <option value="NYSC">NYSC Certificate</option>
+      </select>
+      <label>Expiry date (optional)</label>
+      <input type="date" id="g-expiry"/>
+      <label>ID prefix (optional)</label>
+      <input type="text" id="g-prefix" placeholder="e.g. UNILAG" maxlength="8" style="text-transform:uppercase"/>
+    </div>
+
+    <!-- Other institutions form -->
+    <div id="gen-other" style="display:none">
+      <label>Document title</label>
+      <input type="text" id="g-title-other" placeholder="e.g. Operating Permit — Food Processing"/>
+      <label>Issued to (individual or organisation)</label>
+      <input type="text" id="g-issuedTo-other" placeholder="e.g. Chukwudi Enterprises Ltd"/>
+      <label>Issuing authority</label>
+      <input type="text" id="g-issuedBy-other" placeholder="e.g. Federal Ministry of Health"/>
+      <label>Reference / ID Number <span style="color:#c0392b;font-weight:700">*</span></label>
+      <input type="text" id="g-ref-other" placeholder="e.g. FMH/2026/OP/00142"/>
+      <label>Document type</label>
+      <select id="g-docType-other" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;color:#333;margin-bottom:8px">
+        <option value="Operating Permit">Operating Permit</option>
+        <option value="Professional Licence">Professional Licence</option>
+        <option value="Compliance Certificate">Compliance Certificate</option>
+        <option value="Court Order">Court Order / Judgement</option>
+        <option value="Medical Certificate">Medical Certificate</option>
+        <option value="Certificate of Occupancy">Certificate of Occupancy</option>
+        <option value="Approval Letter">Approval Letter</option>
+        <option value="Clearance Certificate">Clearance Certificate</option>
+        <option value="Award of Contract">Award of Contract / Project</option>
+      </select>
+      <label>Expiry date (optional)</label>
+      <input type="date" id="g-expiry-other"/>
+      <label>ID prefix (optional)</label>
+      <input type="text" id="g-prefix-other" placeholder="e.g. FMH" maxlength="8" style="text-transform:uppercase"/>
+    </div>
+
+    <button class="btn" id="g-btn" style="margin-top:10px">Generate QR Code</button>
     <p class="err" id="g-error"></p>
     <div class="result" id="g-result">
       <div class="qr-wrap"><img id="g-qr" src="" width="150" height="150" alt="QR Code"/></div>
@@ -250,7 +298,7 @@
     <h2>Verify a document</h2>
     <div class="tabs" style="display:flex;gap:0;border-bottom:1px solid #eee;margin-bottom:16px">
       <div class="vtab active" data-vtab="by-id" style="padding:8px 16px;font-size:13px;font-weight:500;color:#1a3a5c;border-bottom:2px solid #1a3a5c;cursor:pointer;margin-bottom:-1px">By Document ID</div>
-      <div class="vtab" data-vtab="by-search" style="padding:8px 16px;font-size:13px;font-weight:500;color:#888;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px">Search by Name / Matric</div>
+      <div class="vtab" data-vtab="by-search" style="padding:8px 16px;font-size:13px;font-weight:500;color:#888;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px">Search by Name / Reference Number</div>
     </div>
     <div id="vtab-by-id" class="vtab-content">
       <label>Document ID</label>
@@ -260,8 +308,8 @@
       <div class="result" id="v-result"></div>
     </div>
     <div id="vtab-by-search" class="vtab-content" style="display:none">
-      <label>Graduate name or matric number</label>
-      <input type="text" id="s-query" placeholder="e.g. Amina Ibrahim or CS/2020/001"/>
+      <label>Name or Reference / ID Number</label>
+      <input type="text" id="s-query" placeholder="e.g. Amina Ibrahim or CS/2020/001 or FMH/2026/OP/001"/>
       <label>Institution (optional, to narrow results)</label>
       <input type="text" id="s-institution" placeholder="e.g. University of Abuja"/>
       <button class="btn" id="s-btn">Search records</button>
@@ -541,7 +589,7 @@
       const res  = await fetch(BASE + '/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix, metadata: { matric_number: matric } })
+        body: JSON.stringify({ title, issued_to: issuedTo, issued_by: issuedBy, doc_type: docType || null, expiry_date: expiry || null, prefix, metadata })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed.');
@@ -550,7 +598,7 @@
       document.getElementById('g-qr').src = data.qr.dataUrl;
       document.getElementById('g-docid').textContent = doc.doc_id;
       document.getElementById('g-fields').innerHTML =
-        '<div class="field-row"><span>Matric Number</span><span>' + esc(matric) + '</span></div>'
+        '<div class="field-row"><span>' + (activeGenTab === 'academic' ? 'Matric Number' : 'Reference Number') + '</span><span>' + esc(matric) + '</span></div>'
         + '<div class="field-row"><span>Issued To</span><span>' + esc(doc.issued_to) + '</span></div>'
         + '<div class="field-row"><span>Issued By</span><span>' + esc(doc.issued_by) + '</span></div>'
         + '<div class="field-row"><span>Type</span><span>' + esc(doc.doc_type || 'N/A') + '</span></div>'
