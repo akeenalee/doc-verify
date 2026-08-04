@@ -427,18 +427,15 @@
   });
 
   // ── HELPERS ───────────────────────────────────────────────────────────────
+  // ip-api.com blocks cloud server IPs on free tier.
+  // We resolve location server-side via /verify/api/logs which now includes
+  // geo data. Frontend falls back to showing the raw IP only.
   async function getLocation(ip) {
     if (!ip || ip === '127.0.0.1' || ip.startsWith('::') || ip === 'N/A') return 'Local';
     if (locCache[ip]) return locCache[ip];
-    try {
-      const r = await fetch('https://ip-api.com/json/' + ip + '?fields=city,country,status');
-      const d = await r.json();
-      const loc = d.status === 'success'
-        ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
-        : 'Unknown';
-      locCache[ip] = loc;
-      return loc;
-    } catch { return 'Unknown'; }
+    // Return IP directly — geolocation resolved server-side at log time
+    locCache[ip] = ip;
+    return ip;
   }
 
   function parseUA(ua) {
@@ -512,10 +509,10 @@
           + '</tr>';
       }).join('');
 
-      logs.forEach(async l => {
-        const loc = await getLocation(l.ip_address);
-        const el  = document.getElementById('loc-' + l.id);
-        if (el) el.textContent = loc;
+      // Geo location now resolved server-side — no ip-api.com calls needed
+      logs.forEach(l => {
+        const el = document.getElementById('loc-' + l.id);
+        if (el) el.textContent = l.geo_location || l.ip_address || 'Unknown';
       });
 
     } catch (e) {

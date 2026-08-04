@@ -273,15 +273,55 @@ router.post('/api/initiate-payment', async (req, res) => {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 
+// Resolve IP geolocation server-side to avoid browser CORS/cloud IP blocks
+async function resolveGeo(ip) {
+  if (!ip || ip === '127.0.0.1' || ip.startsWith('::')) return 'Local';
+  try {
+    const https = require('https');
+    return await new Promise((resolve) => {
+      const req = https.get(
+        `https://ip-api.com/json/${ip}?fields=city,country,status`,
+        { timeout: 3000 },
+        (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const d = JSON.parse(data);
+              resolve(d.status === 'success'
+                ? [d.city, d.country].filter(Boolean).join(', ') || 'Unknown'
+                : 'Unknown');
+            } catch { resolve('Unknown'); }
+          });
+        }
+      );
+      req.on('error', () => resolve('Unknown'));
+      req.on('timeout', () => { req.destroy(); resolve('Unknown'); });
+    });
+  } catch { return 'Unknown'; }
+}
+
 async function logScan(docId, ip, userAgent, result, paymentMethod = 'none') {
   try {
+    // Resolve geolocation server-side (non-blocking — fires and forgets geo lookup)
+    const geo = await resolveGeo(ip);
     await pool.query(
-      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [docId, ip, userAgent, result, paymentMethod]
+      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, geo_location)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT DO NOTHING`,
+      [docId, ip, userAgent, result, paymentMethod, geo]
     );
   } catch (e) {
-    console.error('Log scan error:', e.message);
+    // Fallback: insert without geo if column doesn't exist yet
+    try {
+      await pool.query(
+        `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [docId, ip, userAgent, result, paymentMethod]
+      );
+    } catch (e2) {
+      console.error('Log scan error:', e2.message);
+    }
   }
 }
 
