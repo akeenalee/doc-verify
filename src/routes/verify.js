@@ -1,7 +1,10 @@
 const express = require('express');
+const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction, BASE_URL } = require('../utils/paystack');
+const { verifyDocSignature, signDocId }                    = require('../utils/docUtils');
+const { generatePDF }                                      = require('../utils/pdfGenerator');
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
@@ -188,8 +191,6 @@ router.get('/doc-preview/:docId', async (req, res) => {
     if (!result.rows.length) return res.status(404).send('Document not found');
 
     const docData = result.rows[0];
-    const { generatePDF } = require('../utils/pdfGenerator');
-
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -277,7 +278,6 @@ router.post('/api/initiate-payment', async (req, res) => {
 async function resolveGeo(ip) {
   if (!ip || ip === '127.0.0.1' || ip.startsWith('::')) return 'Local';
   try {
-    const https = require('https');
     return await new Promise((resolve) => {
       const req = https.get(
         `https://ip-api.com/json/${ip}?fields=city,country,status`,
@@ -303,25 +303,23 @@ async function resolveGeo(ip) {
 
 async function logScan(docId, ip, userAgent, result, paymentMethod = 'none') {
   try {
-    // Resolve geolocation server-side (non-blocking — fires and forgets geo lookup)
+    // Resolve geolocation server-side
     const geo = await resolveGeo(ip);
     await pool.query(
       `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, geo_location)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT DO NOTHING`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [docId, ip, userAgent, result, paymentMethod, geo]
     );
   } catch (e) {
-    // Fallback: insert without geo if column doesn't exist yet
+    console.error('Log scan error:', e.message);
+    // Fallback without geo_location if column missing
     try {
       await pool.query(
         `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
          VALUES ($1, $2, $3, $4, $5)`,
         [docId, ip, userAgent, result, paymentMethod]
       );
-    } catch (e2) {
-      console.error('Log scan error:', e2.message);
-    }
+    } catch (e2) { /* ignore */ }
   }
 }
 
