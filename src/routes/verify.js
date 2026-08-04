@@ -5,10 +5,23 @@ const { initializeTransaction, verifyTransaction, BASE_URL } = require('../utils
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
-// GET /verify?doc=DOC-XXXX
+// GET /verify?doc=DOC-XXXX&sig=HMAC16
 router.get('/', async (req, res) => {
-  const { doc, paid } = req.query;
+  const { doc, paid, sig } = req.query;
   if (!doc) return res.status(400).send(renderPage('Invalid Request', 'No document ID provided.', 'error', null));
+
+  // HMAC signature validation
+  // Backwards compatible: URLs without sig still work (existing printed QR codes)
+  // Once all QR codes are regenerated, enforce sig required
+  if (sig && !verifyDocSignature(doc, sig)) {
+    return res.status(400).send(renderPage(
+      'Invalid Verification Link',
+      'This verification link has been tampered with and cannot be trusted. ' +
+      'Please scan the QR code directly from the original physical document.',
+      'error',
+      null
+    ));
+  }
 
   const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || '';
@@ -98,7 +111,8 @@ router.get('/api/payment-callback', async (req, res) => {
       [reference]
     );
 
-    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&paid=${encodeURIComponent(reference)}`);
+    const cbSig = signDocId(doc_id);
+    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&sig=${cbSig}&paid=${encodeURIComponent(reference)}`);
   } catch (err) {
     console.error('Payment callback error:', err);
     res.redirect('/pay.html?error=verification_failed');
