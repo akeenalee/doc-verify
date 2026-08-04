@@ -131,6 +131,7 @@ router.get('/api/logs', async (req, res) => {
     const result = await pool.query(
       `SELECT vl.id, vl.doc_id, vl.verified_at, vl.ip_address,
               vl.user_agent, vl.result, vl.payment_method,
+              COALESCE(vl.geo_location, vl.ip_address, 'Unknown') AS geo_location,
               d.title, d.issued_to, d.issued_by, d.doc_type
        FROM verification_log vl
        LEFT JOIN documents d ON d.doc_id = vl.doc_id
