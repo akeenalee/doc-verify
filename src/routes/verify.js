@@ -6,7 +6,6 @@ const { initializeTransaction, verifyTransaction, BASE_URL } = require('../utils
 const { verifyDocSignature, signDocId }                    = require('../utils/docUtils');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
-const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
