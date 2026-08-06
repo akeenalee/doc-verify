@@ -103,22 +103,13 @@ router.get('/access', async (req, res) => {
 
     const t = result.rows[0];
 
-    // Check expiry - auto-deactivate expired tokens so they stop working
+    // Check expiry
     if (t.expires_at && new Date(t.expires_at) < new Date()) {
-      // Mark as inactive so subsequent access attempts also fail cleanly
-      await pool.query(
-        'UPDATE demo_tokens SET is_active = FALSE WHERE id = $1',
-        [t.id]
-      );
       return res.redirect('/demo-login.html?error=expired_token');
     }
 
-    // Check max uses - auto-deactivate exhausted tokens
+    // Check max uses
     if (t.max_uses > 0 && t.use_count >= t.max_uses) {
-      await pool.query(
-        'UPDATE demo_tokens SET is_active = FALSE WHERE id = $1',
-        [t.id]
-      );
       return res.redirect('/demo-login.html?error=token_exhausted');
     }
 
@@ -160,7 +151,7 @@ router.get('/access', async (req, res) => {
   }
 });
 // POST /demo/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { username, password, full_name, email, company, role } = req.body;
 
   if (username !== DEMO_USER || password !== DEMO_PASS) {

@@ -12,7 +12,7 @@ const tokensRouter    = require('./routes/tokens');
 const webhookRouter   = require('./routes/webhook');
 const demoRouter      = require('./routes/demo');
 const adminRouter     = require('./routes/admin');
-const { verifyLimiter, createLimiter } = require('./middleware/rateLimiter');
+const { verifyLimiter, createLimiter, loginLimiter, tokensLimiter } = require('./middleware/rateLimiter');
 const { requireDemoAuth }  = require('./middleware/demoAuth');
 const { requireAdminAuth } = require('./middleware/adminAuth');
 
@@ -26,14 +26,18 @@ app.use(helmet({
       scriptSrc:     ["'self'", "'unsafe-inline'"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc:      ["'self'", "'unsafe-inline'"],
-      connectSrc:    ["'self'", "https://ip-api.com"],
+      connectSrc:    ["'self'", "https://ipinfo.io"],
       imgSrc:        ["'self'", "data:"],
       frameSrc:      ["'self'", "https://checkout.paystack.com"],
     },
   },
 }));
 
-app.use(cors());
+app.use(cors({
+  origin:      process.env.BASE_URL || 'http://localhost:3000',
+  credentials: true,
+  methods:     ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+}));
 app.set('trust proxy', 1);
 
 // Webhook MUST be before express.json()
@@ -48,20 +52,20 @@ const sessionStore = process.env.NODE_ENV === 'production'
       pool,
       tableName:            'session',
       createTableIfMissing: true,
-      pruneSessionInterval: 60 * 60,  // clean expired sessions from DB every hour
+      pruneSessionInterval:  60 * 60,
     })
   : undefined;
 
 app.use(session({
   store:             sessionStore,
-  secret:            process.env.DOC_SECRET || 'change-this-secret',
+  secret:            process.env.SESSION_SECRET || process.env.DOC_SECRET || 'change-this-secret',
   resave:            false,
   saveUninitialized: false,
   cookie: {
     secure:   process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge:   8 * 60 * 60 * 1000,   // 8 hours — forces re-login daily
+    maxAge:   8 * 60 * 60 * 1000,   // 8 hours
   },
 }));
 
@@ -110,7 +114,7 @@ app.get('/pay.html',     (req, res) => res.sendFile(path.join(__dirname, '../pub
 // API routes
 app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', createLimiter, documentsRouter);
-app.use('/api/tokens',    tokensRouter);
+app.use('/api/tokens',    tokensLimiter, tokensRouter);
 
 // Health check - public, needed for UptimeRobot
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));

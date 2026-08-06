@@ -1,5 +1,4 @@
-// Idle timeout: 8 hours for demo sessions (prospects)
-const DEMO_IDLE_MS = 8 * 60 * 60 * 1000;
+const DEMO_IDLE_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 function requireDemoAuth(req, res, next) {
   if (!req.session || !req.session.demoAuth) {
@@ -19,7 +18,6 @@ function requireDemoAuth(req, res, next) {
     return res.redirect('/demo-login.html?error=session_expired');
   }
 
-  // Refresh last activity timestamp
   req.session.lastDemoActivity = now;
   next();
 }

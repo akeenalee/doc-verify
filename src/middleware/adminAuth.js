@@ -1,5 +1,4 @@
-// Idle timeout: 4 hours for admin sessions (IL team)
-const ADMIN_IDLE_MS = 4 * 60 * 60 * 1000;
+const ADMIN_IDLE_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 function requireAdminAuth(req, res, next) {
   if (!req.session || !req.session.adminAuth) {
@@ -19,7 +18,6 @@ function requireAdminAuth(req, res, next) {
     return res.redirect('/admin-login.html?error=session_expired');
   }
 
-  // Refresh last activity timestamp
   req.session.lastAdminActivity = now;
   next();
 }

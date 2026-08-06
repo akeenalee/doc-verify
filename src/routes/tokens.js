@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { hashPin, requireStudentAuth } = require('../middleware/studentAuth');
+const { hashPin, generateSalt, requireStudentAuth } = require('../middleware/studentAuth');
 const { initializeTransaction, BASE_URL } = require('../utils/paystack');
 
 const BUNDLES = [
@@ -35,7 +35,7 @@ router.post('/register', async (req, res) => {
         (matric_number, institution, full_name, email, phone, pin_hash)
        VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id, matric_number, institution, full_name, email, token_balance`,
-      [matric_number.toUpperCase(), institution, full_name||null, email||null, phone||null, hashPin(pin)]
+      [matric_number.toUpperCase(), institution, full_name||null, email||null, phone||null, hashPin(pin, salt), salt]
     );
     req.session.studentId = result.rows[0].id;
     req.session.matric    = result.rows[0].matric_number;
@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { matric_number, institution, pin } = req.body;
   if (!matric_number || !institution || !pin)
     return res.status(400).json({ error: 'matric_number, institution, and pin are required.' });
@@ -90,37 +90,6 @@ router.get('/me', requireStudentAuth, async (req, res) => {
   }
 });
 
-// GET /api/tokens/my-documents — all documents belonging to this student by matric number
-router.get('/my-documents', requireStudentAuth, async (req, res) => {
-  try {
-    const student = await pool.query(
-      'SELECT matric_number, institution FROM student_tokens WHERE id=$1',
-      [req.session.studentId]
-    );
-    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
-
-    const { matric_number } = student.rows[0];
-
-    // Match by matric number in metadata only — institution match is intentionally relaxed
-    // because the Registrar types institution name into issued_by which may differ from
-    // what the student typed at registration
-    const docs = await pool.query(
-      `SELECT doc_id, title, issued_to, issued_by, doc_type, issue_date,
-              expiry_date, status, metadata, created_at
-       FROM documents
-       WHERE LOWER(metadata->>'matric_number') = LOWER($1)
-       ORDER BY created_at DESC`,
-      [matric_number]
-    );
-
-    res.json({ documents: docs.rows, total: docs.rows.length, matric_number });
-  } catch (err) {
-    console.error('My documents error:', err);
-    res.status(500).json({ error: 'Failed to fetch documents.' });
-  }
-});
-
-// GET /api/tokens/log — verification history for this student's documents
 router.get('/log', requireStudentAuth, async (req, res) => {
   try {
     const student = await pool.query(
@@ -243,7 +212,6 @@ router.patch('/notifications', requireStudentAuth, async (req, res) => {
 });
 
 // GET /api/tokens/replacement-pdf/:docId
-// Matches by matric number only — institution relaxed intentionally
 router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
   const { docId } = req.params;
 
@@ -254,15 +222,14 @@ router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
     );
     if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
 
-    const { matric_number } = student.rows[0];
+    const { matric_number, institution } = student.rows[0];
 
-    // Match by doc_id AND matric_number only — drop institution match
-    // because issued_by on the document may differ from institution on student record
     const docResult = await pool.query(
       `SELECT * FROM documents
        WHERE doc_id = $1
-       AND LOWER(metadata->>'matric_number') = LOWER($2)`,
-      [docId, matric_number]
+       AND issued_by ILIKE $2
+       AND LOWER(metadata->>'matric_number') = LOWER($3)`,
+      [docId, `%${institution}%`, matric_number]
     );
 
     if (!docResult.rows.length) {
@@ -274,9 +241,7 @@ router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
     await pool.query(
       `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
        VALUES ($1, $2, $3, 'found', 'replacement_pdf')`,
-      [docId,
-       req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress,
-       req.headers['user-agent'] || '']
+      [docId, req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, req.headers['user-agent'] || '']
     );
 
     const { generatePDF } = require('../utils/pdfGenerator');
