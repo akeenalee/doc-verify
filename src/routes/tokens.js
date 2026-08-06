@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { hashPin, generateSalt, requireStudentAuth } = require('../middleware/studentAuth');
+const { loginLimiter } = require('../middleware/rateLimiter');
 const { initializeTransaction, BASE_URL } = require('../utils/paystack');
 
 const BUNDLES = [
