@@ -2,6 +2,7 @@ const express    = require('express');
 const router     = express.Router();
 const pool       = require('../db/pool');
 const nodemailer = require('nodemailer');
+const { loginLimiter } = require('../middleware/rateLimiter');
 
 const DEMO_USER = process.env.DEMO_USER || 'univerify';
 const DEMO_PASS = process.env.DEMO_PASS || 'Demo@2026!';
