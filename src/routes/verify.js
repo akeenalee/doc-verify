@@ -5,6 +5,8 @@ const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction, BASE_URL } = require('../utils/paystack');
 const { verifyDocSignature, signDocId }                    = require('../utils/docUtils');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
+const { requireDemoAuth }                                  = require('../middleware/demoAuth');
+const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
@@ -122,8 +124,8 @@ router.get('/api/payment-callback', async (req, res) => {
   }
 });
 
-// GET /verify/api/logs
-router.get('/api/logs', async (req, res) => {
+// GET /verify/api/logs — requires demo session
+router.get('/api/logs', requireDemoAuth, async (req, res) => {
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 50);
   const offset = (page - 1) * limit;
@@ -152,8 +154,8 @@ router.get('/api/logs', async (req, res) => {
   }
 });
 
-// GET /verify/api/search
-router.get('/api/search', async (req, res) => {
+// GET /verify/api/search — requires demo session
+router.get('/api/search', requireDemoAuth, async (req, res) => {
   const { q, institution } = req.query;
   if (!q || q.trim().length < 3) {
     return res.status(400).json({ error: 'Search query must be at least 3 characters.' });
