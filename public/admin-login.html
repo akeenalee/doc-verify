@@ -146,7 +146,7 @@
     btn.innerHTML = '<span class="spinner"></span>Verifying...';
 
     try {
-      const res  = await fetch('/demo/login', {
+      const res  = await fetch('/admin-api/login', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(body),
