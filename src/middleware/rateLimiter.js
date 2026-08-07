@@ -18,15 +18,15 @@ const createLimiter = rateLimit({
   message:         { error: 'Too many requests. Please try again later.' },
 });
 
-// Login routes — 5 attempts per 15 minutes per IP (H-01)
-// Applies to /demo/login, /api/tokens/login, /admin-api/login
+// Login routes — 10 failed attempts per 15 minutes per IP (H-01)
+// Only counts failed attempts. Successful logins do not count toward the limit.
 const loginLimiter = rateLimit({
-  windowMs:        15 * 60 * 1000,
-  max:             5,
-  standardHeaders: true,
-  legacyHeaders:   false,
-  skipSuccessfulRequests: true,  // only count failed attempts
-  message:         { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  windowMs:               15 * 60 * 1000,
+  max:                    10,
+  standardHeaders:        true,
+  legacyHeaders:          false,
+  skipSuccessfulRequests: true,
+  message:                { error: 'Too many login attempts. Please try again in 15 minutes.' },
 });
 
 // Token routes — 30 requests per 15 minutes (M-01)
