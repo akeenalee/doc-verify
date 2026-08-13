@@ -1,5 +1,5 @@
 const express    = require('express');
-const router     = express.Router();
+const router     = require('express').Router();
 const pool       = require('../db/pool');
 const nodemailer = require('nodemailer');
 const { loginLimiter } = require('../middleware/rateLimiter');
@@ -8,30 +8,24 @@ const DEMO_USER = process.env.DEMO_USER || 'univerify';
 const DEMO_PASS = process.env.DEMO_PASS || 'Demo@2026!';
 
 const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST || 'smtp.zoho.com',
-  port:   parseInt(process.env.SMTP_PORT) || 587,
-  secure: false,
+  host:       process.env.SMTP_HOST || 'smtp.zoho.com',
+  port:       parseInt(process.env.SMTP_PORT) || 587,
+  secure:     false,
   requireTLS: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
+  auth:       { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  tls:        { rejectUnauthorized: false },
 });
 
 async function sendVisitorNotification(visitor) {
-  const to      = process.env.NOTIFY_EMAIL || process.env.SMTP_USER;
-  const time    = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lagos' });
-  const ua      = visitor.user_agent || '';
-  const device  = ua.includes('Mobile') ? '📱 Mobile' : ua.includes('iPad') ? '📱 Tablet' : '💻 Desktop';
-
+  const to     = process.env.NOTIFY_EMAIL || process.env.SMTP_USER;
+  const time   = new Date().toLocaleString('en-GB', { timeZone:'Africa/Lagos' });
+  const ua     = visitor.user_agent || '';
+  const device = ua.includes('Mobile') ? '📱 Mobile' : ua.includes('iPad') ? '📱 Tablet' : '💻 Desktop';
   try {
     await transporter.sendMail({
       from:    `"UniVerify Demo" <${process.env.SMTP_USER}>`,
       to,
-      subject: `🔔 New Demo Access — ${visitor.full_name || 'Unknown'} (${visitor.company || 'No company'})`,
+      subject: `🔔 New Demo Access — ${visitor.full_name||'Unknown'} (${visitor.company||'No company'})`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f5f6f8;padding:24px;border-radius:12px">
           <div style="background:#1A3A5C;padding:20px 24px;border-radius:8px 8px 0 0">
@@ -39,174 +33,131 @@ async function sendVisitorNotification(visitor) {
             <p style="color:#8AADCC;margin:4px 0 0;font-size:13px">Someone just logged into the demo platform</p>
           </div>
           <div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e0e4ea;border-top:none">
-
             <table style="width:100%;border-collapse:collapse">
-              <tr style="background:#f5f6f8">
-                <td style="padding:10px 14px;font-size:12px;color:#888;width:130px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Name</td>
-                <td style="padding:10px 14px;font-size:14px;color:#1A3A5C;font-weight:600">${visitor.full_name || '—'}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Email</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333">${visitor.email || '—'}</td>
-              </tr>
-              <tr style="background:#f5f6f8">
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Institution</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333">${visitor.company || '—'}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Role</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333">${visitor.role || '—'}</td>
-              </tr>
-              <tr style="background:#f5f6f8">
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">IP Address</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333;font-family:monospace">${visitor.ip_address || '—'}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Device</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333">${device}</td>
-              </tr>
-              <tr style="background:#f5f6f8">
-                <td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Time (WAT)</td>
-                <td style="padding:10px 14px;font-size:14px;color:#333">${time}</td>
-              </tr>
+              <tr style="background:#f5f6f8"><td style="padding:10px 14px;font-size:12px;color:#888;width:130px;font-weight:600;text-transform:uppercase">Name</td><td style="padding:10px 14px;font-size:14px;color:#1A3A5C;font-weight:600">${visitor.full_name||'—'}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">Email</td><td style="padding:10px 14px;font-size:14px;color:#333">${visitor.email||'—'}</td></tr>
+              <tr style="background:#f5f6f8"><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">Institution</td><td style="padding:10px 14px;font-size:14px;color:#333">${visitor.company||'—'}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">Role</td><td style="padding:10px 14px;font-size:14px;color:#333">${visitor.role||'—'}</td></tr>
+              <tr style="background:#f5f6f8"><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">IP Address</td><td style="padding:10px 14px;font-size:14px;color:#333;font-family:monospace">${visitor.ip_address||'—'}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">Device</td><td style="padding:10px 14px;font-size:14px;color:#333">${device}</td></tr>
+              <tr style="background:#f5f6f8"><td style="padding:10px 14px;font-size:12px;color:#888;font-weight:600;text-transform:uppercase">Time (WAT)</td><td style="padding:10px 14px;font-size:14px;color:#333">${time}</td></tr>
             </table>
-
             <div style="margin-top:20px;padding:14px 16px;background:#e1f5ee;border-radius:8px;border-left:4px solid #0A6B45">
               <p style="margin:0;font-size:13px;color:#0A6B45;font-weight:600">Follow-up recommended within 24 hours</p>
-              <p style="margin:4px 0 0;font-size:12px;color:#555">Log into your dashboard to see the full visitor list: <a href="https://verify.akeenalee.com" style="color:#1A3A5C">verify.akeenalee.com</a></p>
+              <p style="margin:4px 0 0;font-size:12px;color:#555">Log into your dashboard: <a href="https://demo.univerify.ng" style="color:#1A3A5C">demo.univerify.ng</a></p>
             </div>
           </div>
-          <p style="text-align:center;font-size:11px;color:#aaa;margin-top:16px">
-            UniVerify · Innovation Lens Resources Ltd · verify.akeenalee.com
-          </p>
-        </div>
-      `,
+          <p style="text-align:center;font-size:11px;color:#aaa;margin-top:16px">UniVerify · Innovation Lens Resources Ltd · demo.univerify.ng</p>
+        </div>`,
     });
-    console.log('Demo visitor notification sent to', to);
   } catch (e) {
     console.error('Email notification failed:', e.message);
   }
 }
-// GET /demo/access?token=xxx - token-based access (no login form)
+
+// GET /demo/access?token=xxx
 router.get('/access', async (req, res) => {
   const { token } = req.query;
+  const tenantId  = req.tenant?.id;
   if (!token) return res.redirect('/demo-login.html');
 
   try {
     const result = await pool.query(
-      `SELECT * FROM demo_tokens WHERE token = $1 AND is_active = TRUE`,
-      [token]
+      `SELECT * FROM demo_tokens WHERE token=$1 AND is_active=TRUE AND tenant_id=$2`,
+      [token, tenantId]
     );
-
-    if (!result.rows.length) {
-      return res.redirect('/demo-login.html?error=invalid_token');
-    }
+    if (!result.rows.length) return res.redirect('/demo-login.html?error=invalid_token');
 
     const t = result.rows[0];
-
-    // Check expiry
-    if (t.expires_at && new Date(t.expires_at) < new Date()) {
+    if (t.expires_at && new Date(t.expires_at) < new Date())
       return res.redirect('/demo-login.html?error=expired_token');
-    }
-
-    // Check max uses
-    if (t.max_uses > 0 && t.use_count >= t.max_uses) {
+    if (t.max_uses > 0 && t.use_count >= t.max_uses)
       return res.redirect('/demo-login.html?error=token_exhausted');
-    }
 
-    // Update use count and last used
     await pool.query(
-      `UPDATE demo_tokens
-       SET use_count = use_count + 1, last_used_at = NOW()
-       WHERE id = $1`,
+      `UPDATE demo_tokens SET use_count=use_count+1, last_used_at=NOW() WHERE id=$1`,
       [t.id]
     );
 
-    // Log the visitor
     const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'] || '';
 
     await pool.query(
-      `INSERT INTO demo_visitors (full_name, email, company, role, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [t.name || t.label || null, t.email || null, t.company || null, t.role || null, ip, userAgent]
+      `INSERT INTO demo_visitors (full_name, email, company, role, ip_address, user_agent, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [t.name||t.label||null, t.email||null, t.company||null, t.role||null, ip, userAgent, tenantId]
     );
 
-    // Send notification
     sendVisitorNotification({
-      full_name:  t.name || t.label || 'Token User',
-      email:      t.email,
-      company:    t.company,
-      role:       t.role,
-      ip_address: ip,
-      user_agent: userAgent,
+      full_name: t.name||t.label||'Token User', email:t.email,
+      company:t.company, role:t.role, ip_address:ip, user_agent:userAgent,
     });
 
     req.session.demoAuth = true;
-    req.session.demoName = t.name || t.label || 'Guest';
+    req.session.demoName = t.name||t.label||'Guest';
+    req.session.tenantId = tenantId;
     res.redirect('/');
-
   } catch (e) {
     console.error('Token access error:', e.message);
     res.redirect('/demo-login.html?error=server_error');
   }
 });
+
 // POST /demo/login
 router.post('/login', loginLimiter, async (req, res) => {
   const { username, password, full_name, email, company, role } = req.body;
+  const tenantId = req.tenant?.id;
 
-  if (username !== DEMO_USER || password !== DEMO_PASS) {
-    return res.status(401).json({ error: 'Invalid credentials.' });
-  }
+  if (username !== DEMO_USER || password !== DEMO_PASS)
+    return res.status(401).json({ error:'Invalid credentials.' });
 
   const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || '';
-
-  const visitor = { full_name, email, company, role, ip_address: ip, user_agent: userAgent };
+  const visitor   = { full_name, email, company, role, ip_address:ip, user_agent:userAgent };
 
   try {
     await pool.query(
-      `INSERT INTO demo_visitors (full_name, email, company, role, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [full_name || null, email || null, company || null, role || null, ip, userAgent]
+      `INSERT INTO demo_visitors (full_name, email, company, role, ip_address, user_agent, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [full_name||null, email||null, company||null, role||null, ip, userAgent, tenantId]
     );
   } catch (e) {
     console.error('Demo visitor log error:', e.message);
   }
 
-  // Send email notification (non-blocking)
   sendVisitorNotification(visitor);
-
   req.session.demoAuth = true;
-  req.session.demoName = full_name || 'Guest';
-  res.json({ success: true });
+  req.session.demoName = full_name||'Guest';
+  req.session.tenantId = tenantId;
+  res.json({ success:true });
 });
 
 // POST /demo/logout
 router.post('/logout', (req, res) => {
   req.session.demoAuth = false;
-  res.json({ success: true });
+  res.json({ success:true });
 });
 
 // GET /demo/visitors
 router.get('/visitors', async (req, res) => {
+  const tenantId = req.tenant?.id;
   try {
     const result = await pool.query(
       `SELECT id, full_name, email, company, role, ip_address, user_agent,
               first_seen_at, last_seen_at, page_views
-       FROM demo_visitors
-       ORDER BY first_seen_at DESC
-       LIMIT 200`
+       FROM demo_visitors WHERE tenant_id=$1
+       ORDER BY first_seen_at DESC LIMIT 200`,
+      [tenantId]
     );
-    res.json({ visitors: result.rows, total: result.rows.length });
+    res.json({ visitors:result.rows, total:result.rows.length });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch visitors.' });
+    res.status(500).json({ error:'Failed to fetch visitors.' });
   }
 });
 
 // GET /demo/status
 router.get('/status', (req, res) => {
-  res.json({ authenticated: !!req.session.demoAuth, name: req.session.demoName || null });
+  res.json({ authenticated:!!req.session.demoAuth, name:req.session.demoName||null });
 });
 
 module.exports = router;

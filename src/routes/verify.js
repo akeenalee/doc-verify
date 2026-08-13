@@ -11,6 +11,7 @@ const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
 // GET /verify?doc=DOC-XXXX&sig=HMAC16
 router.get('/', async (req, res) => {
+  req._tenantId = req.tenant?.id || null;
   const { doc, paid, sig } = req.query;
   if (!doc) return res.status(400).send(renderPage('Invalid Request', 'No document ID provided.', 'error', null));
 
@@ -136,11 +137,12 @@ router.get('/api/logs', requireDemoAuth, async (req, res) => {
               d.title, d.issued_to, d.issued_by, d.doc_type
        FROM verification_log vl
        LEFT JOIN documents d ON d.doc_id = vl.doc_id
+       WHERE vl.tenant_id = $3
        ORDER BY vl.verified_at DESC
        LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      [limit, offset, req.tenant.id]
     );
-    const countResult = await pool.query('SELECT COUNT(*) FROM verification_log');
+    const countResult = await pool.query('SELECT COUNT(*) FROM verification_log WHERE tenant_id=$1', [req.tenant.id]);
     res.json({
       logs:  result.rows,
       total: parseInt(countResult.rows[0].count),
@@ -161,19 +163,27 @@ router.get('/api/search', requireDemoAuth, async (req, res) => {
   }
   try {
     const term = q.trim();
+    const tenantId = req.tenant?.id;
+    const params    = institution
+      ? [`%${term}%`, `%${institution.trim()}%`, tenantId]
+      : [`%${term}%`, tenantId];
+    const instClause = institution ? 'AND issued_by ILIKE $2' : '';
+    const tidParam   = institution ? '$3' : '$2';
+
     const result = await pool.query(
       `SELECT doc_id, title, issued_to, issued_by, doc_type,
               issue_date, expiry_date, status, metadata
        FROM documents
-       WHERE (
+       WHERE tenant_id = ${tidParam}
+       AND (
          doc_id ILIKE $1
          OR issued_to ILIKE $1
          OR metadata->>'matric_number' ILIKE $1
        )
-       ${institution ? 'AND issued_by ILIKE $2' : ''}
+       ${instClause}
        ORDER BY issue_date DESC
        LIMIT 10`,
-      institution ? [`%${term}%`, `%${institution.trim()}%`] : [`%${term}%`]
+      params
     );
     res.json({ results: result.rows, total: result.rows.length });
   } catch (err) {
@@ -307,19 +317,20 @@ async function logScan(docId, ip, userAgent, result, paymentMethod = 'none') {
   try {
     // Resolve geolocation server-side
     const geo = await resolveGeo(ip);
+    const tenantId = req._tenantId || null;
     await pool.query(
-      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, geo_location)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [docId, ip, userAgent, result, paymentMethod, geo]
+      `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, geo_location, tenant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [docId, ip, userAgent, result, paymentMethod, geo, tenantId]
     );
   } catch (e) {
     console.error('Log scan error:', e.message);
     // Fallback without geo_location if column missing
     try {
       await pool.query(
-        `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [docId, ip, userAgent, result, paymentMethod]
+        `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [docId, ip, userAgent, result, paymentMethod, tenantId]
       );
     } catch (e2) { /* ignore */ }
   }
