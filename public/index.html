@@ -766,7 +766,55 @@
     if (e.key === 'Enter') verifyDoc();
   });
 
+  // ── TENANT CONFIG ─────────────────────────────────────────────────────────
+  let TENANT = { institution_type: 'academic', name: 'UniVerify' };
+
+  async function loadTenantConfig() {
+    try {
+      const res = await fetch(BASE + '/api/tenant-info');
+      if (res.ok) {
+        TENANT = await res.json();
+        applyTenantConfig();
+      }
+    } catch (e) { /* use defaults */ }
+  }
+
+  function applyTenantConfig() {
+    const type = TENANT.institution_type || 'academic';
+
+    // Update institution name in header if element exists
+    const nameEl = document.getElementById('tenant-name');
+    if (nameEl) nameEl.textContent = TENANT.name || 'UniVerify';
+
+    const tabOther   = document.getElementById('tab-other');
+    const tabAcademic= document.getElementById('tab-academic');
+
+    // Pre-fill institution name in the generate form
+    const issuedByEl      = document.getElementById('g-issuedBy');
+    const issuedByOtherEl = document.getElementById('g-issuedBy-other');
+    if (issuedByEl      && TENANT.name) issuedByEl.value      = TENANT.name;
+    if (issuedByOtherEl && TENANT.name) issuedByOtherEl.value = TENANT.name;
+
+    // Pre-fill prefix from tenant short_code if available
+    const prefixEl      = document.getElementById('g-prefix');
+    const prefixOtherEl = document.getElementById('g-prefix-other');
+    if (prefixEl      && TENANT.short_code) prefixEl.value      = TENANT.short_code;
+    if (prefixOtherEl && TENANT.short_code) prefixOtherEl.value = TENANT.short_code;
+
+    if (type === 'academic') {
+      // Academic tenant — hide Other Institutions tab
+      if (tabOther) tabOther.style.display = 'none';
+      switchGenTab('academic');
+    } else if (['government','hospital','court'].includes(type)) {
+      // Government/hospital/court tenant — hide Academic tab
+      if (tabAcademic) tabAcademic.style.display = 'none';
+      switchGenTab('other');
+    }
+    // demo tenant (IL) — show both tabs, no change
+  }
+
   // ── INIT ──────────────────────────────────────────────────────────────────
+  loadTenantConfig();
   loadLogs();
   loadVisitors();
   setInterval(loadLogs, 30000);

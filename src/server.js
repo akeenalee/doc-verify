@@ -140,6 +140,20 @@ app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensLimiter, tokensRouter);
 
+// Public tenant info — used by the dashboard to configure the UI
+// Returns only safe public fields, no sensitive config
+app.get('/api/tenant-info', (req, res) => {
+  if (!req.tenant) return res.json({ institution_type: 'academic', name: 'UniVerify' });
+  res.json({
+    name:             req.tenant.name,
+    institution_type: req.tenant.institution_type,
+    primary_colour:   req.tenant.primary_colour,
+    accent_colour:    req.tenant.accent_colour,
+    subdomain:        req.tenant.subdomain,
+    short_code:       req.tenant.short_code,
+  });
+});
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
