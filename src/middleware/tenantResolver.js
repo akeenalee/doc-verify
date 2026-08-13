@@ -44,8 +44,12 @@ function resolveSubdomain(req) {
   // Strip port if present
   const hostname = host.split(':')[0];
 
+  // Legacy domain: verify.akeenalee.com → treat as demo tenant
+  // during transition period. Remove this once DNS has fully migrated
+  // to demo.univerify.ng and verify.akeenalee.com is retired.
+  if (hostname === 'verify.akeenalee.com') return 'demo';
+
   // Production: lasu.univerify.ng → 'lasu'
-  // Staging:    lasu.univerify.ng → 'lasu'
   // Local dev:  lasu.localhost    → 'lasu'
   // Local dev:  localhost         → 'demo' (default)
 
