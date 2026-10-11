@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UniVerify - Onboard Institution</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0D2137;min-height:100vh;color:#ccc}
+    a{color:#8AADCC}
+    .topnav{background:#0A1929;padding:14px 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1A3A5C;flex-wrap:wrap;gap:10px}
+    .topnav .brand{font-size:16px;font-weight:700;color:#fff}
+    .topnav .brand span{color:#B8860B}
+    .topnav .tag{font-size:11px;color:#8AADCC;background:#1A3A5C;padding:3px 10px;border-radius:10px;font-weight:600;letter-spacing:0.5px}
+    .topnav .right{display:flex;align-items:center;gap:12px}
+    .nav-btn{font-size:12px;color:#8AADCC;background:none;border:1px solid #1A3A5C;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:inherit;text-decoration:none}
+    .nav-btn:hover{border-color:#8AADCC;color:#fff}
+    .container{max-width:1100px;margin:0 auto;padding:28px 20px}
+    .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start}
+    @media(max-width:860px){.grid{grid-template-columns:1fr}}
+    .panel{background:#0A1929;border:1px solid #1A3A5C;border-radius:14px;padding:24px;margin-bottom:24px}
+    .panel-header{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #1A3A5C;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .panel-header h2{font-size:15px;color:#fff;font-weight:600}
+    .panel-header .sub{font-size:12px;color:#8AADCC;margin-top:3px}
+    .section-label{font-size:11px;color:#B8860B;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin:18px 0 10px}
+    .section-label:first-child{margin-top:0}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+    .form-row.one{grid-template-columns:1fr}
+    @media(max-width:600px){.form-row{grid-template-columns:1fr}}
+    .form-group{display:flex;flex-direction:column;gap:5px;min-width:0}
+    .form-group label{font-size:11px;color:#8AADCC;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+    .form-group label .req{color:#B8860B}
+    .form-group input,.form-group select,.form-group textarea{padding:9px 12px;background:#061525;border:1.5px solid #1A3A5C;border-radius:8px;font-size:13px;color:#fff;font-family:inherit;outline:none;transition:border 0.2s;width:100%}
+    .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#B8860B}
+    .form-group select option{background:#061525}
+    .form-group textarea{resize:vertical;min-height:56px}
+    .form-group.invalid input,.form-group.invalid select{border-color:#C0392B}
+    .hint{font-size:11px;color:#667F99}
+    .field-err{font-size:11px;color:#f5c6c6;display:none}
+    .form-group.invalid .field-err{display:block}
+    .prefix-wrap{display:flex;align-items:stretch}
+    .prefix-wrap input{border-top-right-radius:0;border-bottom-right-radius:0}
+    .prefix-wrap .suffix{padding:9px 10px;background:#0D2137;border:1.5px solid #1A3A5C;border-left:none;border-radius:0 8px 8px 0;font-size:12px;color:#8AADCC;white-space:nowrap}
+    .avail{font-size:11px;font-weight:600}
+    .avail.ok{color:#4CAF7D}
+    .avail.bad{color:#f5c6c6}
+    .colour-row{display:flex;gap:8px;align-items:center}
+    .colour-row input[type=color]{width:42px;height:38px;padding:2px;flex:none;cursor:pointer}
+    .check{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#ccc;margin:16px 0;line-height:1.5}
+    .check input{margin-top:2px}
+    .create-btn{padding:11px 26px;background:#B8860B;color:#0A1929;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+    .create-btn:hover{background:#D4A017}
+    .create-btn:disabled{background:#555;color:#888;cursor:not-allowed}
+    .form-err{font-size:12px;color:#f5c6c6;margin-top:10px;display:none}
+    .form-err.show{display:block}
+    .preview{border-radius:12px;overflow:hidden;border:1px solid #1A3A5C;background:#fff}
+    .preview .bar{padding:16px 18px;color:#fff}
+    .preview .bar .p-name{font-size:15px;font-weight:700;line-height:1.3}
+    .preview .bar .p-url{font-size:11px;opacity:0.8;margin-top:4px;font-family:monospace;word-break:break-all}
+    .preview .body{padding:16px 18px;color:#333;font-size:12px;line-height:1.7}
+    .preview .doc-id{font-family:monospace;font-size:12px;padding:2px 6px;border-radius:4px;background:#f4f6f9}
+    .preview .btn{display:inline-block;margin-top:10px;padding:7px 14px;border-radius:6px;color:#fff;font-size:12px;font-weight:600}
+    .steps{font-size:12px;line-height:1.8;color:#8AADCC;padding-left:18px}
+    .result{display:none;border:1px solid #0A6B45;background:#061F17;border-radius:12px;padding:18px;margin-bottom:24px}
+    .result.show{display:block}
+    .result h3{font-size:14px;color:#4CAF7D;margin-bottom:12px}
+    .result .row{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+    .result .row .k{font-size:11px;color:#8AADCC;text-transform:uppercase;font-weight:600;width:120px;flex:none}
+    .result .row code{font-size:12px;background:#061525;border:1px solid #1A3A5C;border-radius:6px;padding:5px 9px;color:#fff;word-break:break-all;flex:1;min-width:0}
+    @media(max-width:600px){.result .row .k{width:100%}.result .row code{flex-basis:100%}}
+    .result .note{font-size:12px;color:#8AADCC;margin-top:6px;line-height:1.6}
+    .action-btn{font-size:11px;padding:5px 11px;border-radius:5px;border:none;cursor:pointer;font-family:inherit;font-weight:600;text-decoration:none;display:inline-block;white-space:nowrap}
+    .action-btn.copy{background:#1A3A5C;color:#8AADCC}
+    .action-btn.copy:hover{background:#2A4A6C;color:#fff}
+    .action-btn.open{background:#B8860B;color:#0A1929}
+    .action-btn.suspend{background:#5A1A1A;color:#f5c6c6}
+    .action-btn.restore{background:#0A6B45;color:#e1f5ee}
+    .scroll{overflow-x:auto}
+    .table{width:100%;border-collapse:collapse;font-size:13px}
+    .table th{text-align:left;padding:8px 12px;color:#8AADCC;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #1A3A5C}
+    .table td{padding:11px 12px;border-bottom:1px solid #0D2137;vertical-align:middle;color:#ccc}
+    .table tr:last-child td{border-bottom:none}
+    .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:2px;border:1px solid rgba(255,255,255,0.2)}
+    .status-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
+    .status-badge.active{background:#0A6B45;color:#e1f5ee}
+    .status-badge.inactive{background:#5A1A1A;color:#f5c6c6}
+    .status-badge.root{background:#1A3A5C;color:#fff}
+    .empty{text-align:center;padding:28px;color:#667F99;font-size:13px}
+    .muted{font-size:11px;color:#667F99}
+    .toast{position:fixed;bottom:24px;right:24px;background:#0A6B45;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:none;z-index:999}
+    .toast.show{display:block}
+    .toast.error{background:#8B0000}
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="brand">Uni<span>Verify</span> <span class="tag">ONBOARDING</span></div>
+  <div class="right">
+    <a class="nav-btn" href="/admin">Back to admin</a>
+    <button class="nav-btn" id="logout-btn">Log out</button>
+  </div>
+</nav>
+
+<div class="container">
+
+  <div class="result" id="result">
+    <h3 id="result-title">Institution created</h3>
+    <div class="row"><span class="k">Platform URL</span><code id="r-url"></code>
+      <button class="action-btn copy" data-copy="r-url">Copy</button>
+      <a class="action-btn open" id="r-url-open" target="_blank" rel="noopener">Open</a></div>
+    <div class="row" id="r-link-row"><span class="k">Presenter link</span><code id="r-link"></code>
+      <button class="action-btn copy" data-copy="r-link">Copy</button>
+      <a class="action-btn open" id="r-link-open" target="_blank" rel="noopener">Open dashboard</a></div>
+    <div class="note">
+      The presenter link signs you straight into the new institution's dashboard for 30 days. It works on any device, so
+      keep it private. Revoke it from that institution's admin panel when the presentation is over.
+      The subdomain is live now; if a browser shows "No institution found", it cached an earlier visit, so refresh.
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- FORM -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Onboard a new institution</h2>
+          <div class="sub">Provisions the tenant and its subdomain. It's usable as soon as you save.</div>
+        </div>
+      </div>
+
+      <form id="onboard-form" novalidate>
+        <div class="section-label">Identity</div>
+        <div class="form-row one">
+          <div class="form-group" data-field="name">
+            <label for="f-name">Institution full name <span class="req">*</span></label>
+            <input id="f-name" name="name" maxlength="200" placeholder="e.g. Lagos State University" autocomplete="off"/>
+            <span class="field-err"></span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" data-field="subdomain">
+            <label for="f-subdomain">Subdomain <span class="req">*</span></label>
+            <div class="prefix-wrap">
+              <input id="f-subdomain" name="subdomain" maxlength="40" placeholder="lasu" autocomplete="off" spellcheck="false"/>
+              <span class="suffix" id="domain-suffix">.univerify.ng</span>
+            </div>
+            <span class="avail" id="sub-avail"></span>
+            <span class="field-err"></span>
+          </div>
+          <div class="form-group" data-field="short_code">
+            <label for="f-short">Short code <span class="req">*</span></label>
+            <input id="f-short" name="short_code" maxlength="8" placeholder="LASU" autocomplete="off" spellcheck="false" style="text-transform:uppercase"/>
+            <span class="hint">Document ID prefix, 2 to 8 letters or digits.</span>
+            <span class="avail" id="code-avail"></span>
+            <span class="field-err"></span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" data-field="institution_type">
+            <label for="f-type">Institution type</label>
+            <select id="f-type" name="institution_type">
+              <option value="academic">Academic (university, polytechnic, college)</option>
+              <option value="government">Government agency</option>
+              <option value="hospital">Hospital</option>
+              <option value="court">Court</option>
+              <option value="demo">Demo (shows all document types)</option>
+            </select>
+            <span class="field-err"></span>
+          </div>
+          <div class="form-group" data-field="plan">
+            <label for="f-plan">Plan</label>
+            <select id="f-plan" name="plan">
+              <option value="standard">Standard</option>
+              <option value="premium">Premium</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+            <span class="field-err"></span>
+          </div>
+        </div>
+
+        <div class="section-label">Branding</div>
+        <div class="form-row">
+          <div class="form-group" data-field="primary_colour">
+            <label for="f-primary">Primary colour</label>
+            <div class="colour-row">
+              <input type="color" id="f-primary-pick" value="#1A3A5C" aria-label="Pick primary colour"/>
+              <input id="f-primary" name="primary_colour" value="#1A3A5C" maxlength="7"/>
+            </div>
+            <span class="field-err"></span>
+          </div>
+          <div class="form-group" data-field="accent_colour">
+            <label for="f-accent">Accent colour</label>
+            <div class="colour-row">
+              <input type="color" id="f-accent-pick" value="#B8860B" aria-label="Pick accent colour"/>
+              <input id="f-accent" name="accent_colour" value="#B8860B" maxlength="7"/>
+            </div>
+            <span class="field-err"></span>
+          </div>
+        </div>
+        <div class="form-row one">
+          <div class="form-group" data-field="logo_url">
+            <label for="f-logo">Logo URL</label>
+            <input id="f-logo" name="logo_url" maxlength="1000" placeholder="https://..." autocomplete="off"/>
+            <span class="hint">Optional. Stored now for when tenant logos land on the PDF.</span>
+            <span class="field-err"></span>
+          </div>
+        </div>
+
+        <div class="section-label">Contact</div>
+        <div class="form-row">
+          <div class="form-group" data-field="contact_email">
+            <label for="f-email">Contact email</label>
+            <input id="f-email" name="contact_email" type="email" maxlength="200" placeholder="registrar@lasu.edu.ng"/>
+            <span class="field-err"></span>
+          </div>
+          <div class="form-group" data-field="contact_phone">
+            <label for="f-phone">Contact phone</label>
+            <input id="f-phone" name="contact_phone" maxlength="50"/>
+            <span class="field-err"></span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" data-field="website">
+            <label for="f-website">Website</label>
+            <input id="f-website" name="website" maxlength="200" placeholder="https://lasu.edu.ng"/>
+            <span class="field-err"></span>
+          </div>
+          <div class="form-group" data-field="address">
+            <label for="f-address">Address</label>
+            <input id="f-address" name="address" maxlength="1000"/>
+            <span class="field-err"></span>
+          </div>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="f-presenter" checked/>
+          <span>Create a presenter link so I can open this institution's dashboard straight away (30 days).</span>
+        </label>
+
+        <button type="submit" class="create-btn" id="create-btn">Create institution</button>
+        <div class="form-err" id="form-err"></div>
+      </form>
+    </div>
+
+    <!-- PREVIEW -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><div><h2>Preview</h2><div class="sub">How the brand colours read on the verification page.</div></div></div>
+        <div class="preview">
+          <div class="bar" id="pv-bar" style="background:#1A3A5C">
+            <div class="p-name" id="pv-name">Institution name</div>
+            <div class="p-url" id="pv-url">subdomain.univerify.ng</div>
+          </div>
+          <div class="body">
+            Document ID <span class="doc-id" id="pv-docid">CODE-XXXXXXXX-XXXXXXXX</span><br/>
+            Status: <strong style="color:#0A6B45">Verified</strong>
+            <div><span class="btn" id="pv-btn" style="background:#B8860B">Verify a document</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div><h2>Presentation flow</h2></div></div>
+        <ol class="steps">
+          <li>Create the institution here.</li>
+          <li>Open the presenter link on the presentation laptop.</li>
+          <li>Generate a certificate on the institution's own subdomain.</li>
+          <li>Scan the QR with a phone to show live verification.</li>
+          <li>Suspend the tenant below if the prospect doesn't proceed.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIST -->
+  <div class="panel">
+    <div class="panel-header">
+      <div><h2>Institutions</h2><div class="sub">Every tenant on the platform.</div></div>
+      <button class="nav-btn" id="refresh-btn">Refresh</button>
+    </div>
+    <div class="scroll">
+      <table class="table">
+        <thead><tr><th>Institution</th><th>Subdomain</th><th>Code</th><th>Type</th><th>Docs</th><th>Status</th><th></th></tr></thead>
+        <tbody id="tenants-body"><tr><td colspan="7" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const HEX = /^#[0-9A-Fa-f]{6}$/;
+  let ROOT = 'demo';
+  let suffix = '.univerify.ng';
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function toast(msg, isError) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.className = 'toast'; }, 3000);
+  }
+
+  async function api(url, opts) {
+    const res = await fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } }, opts));
+    if (res.status === 401) { window.location.href = '/admin-login.html?redirect=/admin/onboard'; throw new Error('auth'); }
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  // Local dev shows .localhost, production shows .univerify.ng
+  if (location.hostname === 'localhost' || location.hostname.endsWith('.localhost')) {
+    suffix = '.localhost' + (location.port ? ':' + location.port : '');
+    $('domain-suffix').textContent = suffix;
+  }
+
+  // ── AUTO-FILL FROM NAME ─────────────────────────────────────────────────
+  let subTouched = false, codeTouched = false;
+  const STOP = ['of','the','and','for','in','at'];
+
+  function suggestSub(name) {
+    return name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+  }
+  function suggestCode(name) {
+    const words = name.replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOP.includes(w.toLowerCase()));
+    const initials = words.map(w => w[0]).join('').toUpperCase();
+    return (initials.length >= 2 ? initials : name.replace(/[^A-Za-z0-9]/g, '')).toUpperCase().slice(0, 8);
+  }
+
+  $('f-name').addEventListener('input', () => {
+    const name = $('f-name').value.trim();
+    if (!codeTouched) $('f-short').value = suggestCode(name);
+    if (!subTouched)  $('f-subdomain').value = suggestCode(name).toLowerCase() || suggestSub(name);
+    updatePreview(); scheduleAvail();
+  });
+  $('f-subdomain').addEventListener('input', () => {
+    subTouched = true;
+    $('f-subdomain').value = $('f-subdomain').value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    updatePreview(); scheduleAvail();
+  });
+  $('f-short').addEventListener('input', () => {
+    codeTouched = true;
+    $('f-short').value = $('f-short').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    updatePreview(); scheduleAvail();
+  });
+
+  // ── COLOURS ─────────────────────────────────────────────────────────────
+  [['f-primary-pick','f-primary'],['f-accent-pick','f-accent']].forEach(([pick, text]) => {
+    $(pick).addEventListener('input', () => { $(text).value = $(pick).value.toUpperCase(); updatePreview(); });
+    $(text).addEventListener('input', () => { if (HEX.test($(text).value)) $(pick).value = $(text).value; updatePreview(); });
+  });
+
+  function updatePreview() {
+    const p = $('f-primary').value, a = $('f-accent').value;
+    if (HEX.test(p)) $('pv-bar').style.background = p;
+    if (HEX.test(a)) $('pv-btn').style.background = a;
+    $('pv-name').textContent  = $('f-name').value.trim() || 'Institution name';
+    $('pv-url').textContent   = ($('f-subdomain').value || 'subdomain') + suffix;
+    $('pv-docid').textContent = ($('f-short').value || 'CODE') + '-XXXXXXXX-XXXXXXXX';
+  }
+
+  // ── AVAILABILITY ────────────────────────────────────────────────────────
+  let availTimer;
+  function scheduleAvail() { clearTimeout(availTimer); availTimer = setTimeout(checkAvail, 350); }
+  async function checkAvail() {
+    const sub = $('f-subdomain').value, code = $('f-short').value;
+    if (!sub && !code) { $('sub-avail').textContent = ''; $('code-avail').textContent = ''; return; }
+    try {
+      const q = new URLSearchParams({ subdomain: sub, short_code: code });
+      const { ok, data } = await api('/admin-api/tenants/availability?' + q);
+      if (!ok) return;
+      setAvail('sub-avail', data.subdomain, 'Available', 'Taken, reserved or invalid');
+      setAvail('code-avail', data.short_code, 'Available', 'Taken or invalid');
+    } catch (e) {}
+  }
+  function setAvail(id, val, okText, badText) {
+    const el = $(id);
+    if (val === null) { el.textContent = ''; el.className = 'avail'; return; }
+    el.textContent = val ? okText : badText;
+    el.className = 'avail ' + (val ? 'ok' : 'bad');
+  }
+
+  // ── SUBMIT ──────────────────────────────────────────────────────────────
+  function clearErrors() {
+    document.querySelectorAll('.form-group.invalid').forEach(g => g.classList.remove('invalid'));
+    $('form-err').className = 'form-err';
+  }
+  function showErrors(fields) {
+    Object.entries(fields || {}).forEach(([k, msg]) => {
+      const g = document.querySelector('.form-group[data-field="' + k + '"]');
+      if (!g) return;
+      g.classList.add('invalid');
+      g.querySelector('.field-err').textContent = msg;
+    });
+    const first = document.querySelector('.form-group.invalid input, .form-group.invalid select');
+    if (first) first.focus();
+  }
+
+  $('onboard-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    clearErrors();
+    const f = e.target;
+    const body = {};
+    ['name','subdomain','short_code','institution_type','plan','primary_colour','accent_colour',
+     'logo_url','contact_email','contact_phone','website','address'].forEach(k => { body[k] = f.elements[k].value.trim(); });
+    body.presenter_link = $('f-presenter').checked;
+
+    const btn = $('create-btn');
+    btn.disabled = true; btn.textContent = 'Creating...';
+    try {
+      const { ok, data } = await api('/admin-api/tenants', { method: 'POST', body: JSON.stringify(body) });
+      if (!ok) {
+        showErrors(data.fields);
+        $('form-err').textContent = data.error || 'Could not create the institution.';
+        $('form-err').className = 'form-err show';
+        return;
+      }
+      showResult(data);
+      f.reset();
+      subTouched = codeTouched = false;
+      $('f-primary-pick').value = '#1A3A5C'; $('f-accent-pick').value = '#B8860B';
+      $('sub-avail').textContent = ''; $('code-avail').textContent = '';
+      updatePreview();
+      loadTenants();
+      toast(data.tenant.name + ' is live.');
+    } catch (err) {
+      if (err.message !== 'auth') {
+        $('form-err').textContent = 'Network error. Check your connection and try again.';
+        $('form-err').className = 'form-err show';
+      }
+    } finally {
+      btn.disabled = false; btn.textContent = 'Create institution';
+    }
+  });
+
+  function showResult(data) {
+    $('result-title').textContent = data.tenant.name + ' is live';
+    $('r-url').textContent = data.tenant.url;
+    $('r-url-open').href   = data.tenant.url;
+    if (data.presenter_link) {
+      $('r-link').textContent = data.presenter_link;
+      $('r-link-open').href   = data.presenter_link;
+      $('r-link-row').style.display = '';
+    } else {
+      $('r-link-row').style.display = 'none';
+    }
+    $('result').className = 'result show';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); toast('Copied.'); }
+    catch (e) { toast('Copy failed. Select the text instead.', true); }
+  }));
+
+  // ── LIST ────────────────────────────────────────────────────────────────
+  async function loadTenants() {
+    const body = $('tenants-body');
+    try {
+      const { ok, data } = await api('/admin-api/tenants');
+      if (!ok) { body.innerHTML = '<tr><td colspan="7" class="empty">' + esc(data.error || 'Failed to load.') + '</td></tr>'; return; }
+      ROOT = data.root_subdomain || ROOT;
+      if (!data.tenants.length) { body.innerHTML = '<tr><td colspan="7" class="empty">No institutions yet.</td></tr>'; return; }
+      body.innerHTML = data.tenants.map(t => {
+        const isRoot = t.subdomain === ROOT;
+        const status = isRoot ? '<span class="status-badge root">ROOT</span>'
+          : t.active ? '<span class="status-badge active">ACTIVE</span>' : '<span class="status-badge inactive">SUSPENDED</span>';
+        const action = isRoot ? '' : t.active
+          ? '<button class="action-btn suspend" data-toggle="' + esc(t.id) + '" data-active="false" data-name="' + esc(t.name) + '">Suspend</button>'
+          : '<button class="action-btn restore" data-toggle="' + esc(t.id) + '" data-active="true" data-name="' + esc(t.name) + '">Restore</button>';
+        return '<tr>' +
+          '<td><span class="swatch" style="background:' + esc(t.primary_colour || '#1A3A5C') + '"></span><span class="swatch" style="background:' + esc(t.accent_colour || '#B8860B') + '"></span> ' +
+            '<strong style="color:#fff">' + esc(t.name) + '</strong><div class="muted">' + esc(t.contact_email || '') + '</div></td>' +
+          '<td><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.subdomain) + '</a></td>' +
+          '<td>' + esc(t.short_code) + '</td>' +
+          '<td>' + esc(t.institution_type) + '</td>' +
+          '<td>' + esc(t.documents) + '</td>' +
+          '<td>' + status + '</td>' +
+          '<td>' + action + '</td></tr>';
+      }).join('');
+    } catch (e) {
+      if (e.message !== 'auth') body.innerHTML = '<tr><td colspan="7" class="empty">Failed to load.</td></tr>';
+    }
+  }
+
+  $('tenants-body').addEventListener('click', async e => {
+    const b = e.target.closest('[data-toggle]');
+    if (!b) return;
+    const active = b.dataset.active === 'true';
+    if (!active && !confirm('Suspend ' + b.dataset.name + '? Its subdomain will stop working and QR scans will show "No institution found" until you restore it.')) return;
+    b.disabled = true;
+    const { ok, data } = await api('/admin-api/tenants/' + b.dataset.toggle + '/active', { method: 'PATCH', body: JSON.stringify({ active }) });
+    if (!ok) { toast(data.error || 'Update failed.', true); b.disabled = false; return; }
+    toast(active ? 'Restored.' : 'Suspended.');
+    loadTenants();
+  });
+
+  $('refresh-btn').addEventListener('click', loadTenants);
+  $('logout-btn').addEventListener('click', async () => {
+    await fetch('/admin-api/logout', { method: 'POST' });
+    window.location.href = '/admin-login.html';
+  });
+
+  updatePreview();
+  loadTenants();
+</script>
+</body>
+</html>

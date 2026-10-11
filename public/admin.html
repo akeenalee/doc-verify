@@ -97,6 +97,7 @@
   <div class="brand">Uni<span>Verify</span> <span class="tag">ADMIN PANEL</span></div>
   <div class="right">
     <span style="font-size:12px;color:#8AADCC">Innovation Lens Resources Ltd</span>
+    <a class="logout-btn" id="onboard-link" href="/admin/onboard" style="display:none;text-decoration:none;color:#B8860B;border-color:#B8860B">Onboard institution</a>
     <button class="logout-btn" id="logout-btn">Log out</button>
   </div>
 </nav>
@@ -339,6 +340,11 @@
     toast('Token list refreshed.');
   });
   document.getElementById('refresh-visitors-btn').addEventListener('click', loadVisitors);
+
+  // Onboarding is only offered on the Innovation Lens root tenant
+  fetch('/admin-api/tenant').then(r => r.json()).then(d => {
+    if (d.can_onboard) document.getElementById('onboard-link').style.display = '';
+  }).catch(() => {});
 
   // ── LOAD STATS ────────────────────────────────────────────────────────────
   async function loadStats() {
