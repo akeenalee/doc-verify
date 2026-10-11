@@ -4,6 +4,7 @@ const pool     = require('../db/pool');
 const crypto   = require('crypto');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireAdminAuth } = require('../middleware/adminAuth');
+const tenantsRouter = require('./tenants');
 
 const ADMIN_USER = process.env.ADMIN_USER || 'iladmin';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'IL@Admin2026!';
@@ -29,6 +30,9 @@ router.get('/status', (req, res) => {
 
 // All routes below require admin auth
 router.use(requireAdminAuth);
+
+// Institution onboarding (IL root tenant only, enforced inside the router)
+router.use('/tenants', tenantsRouter);
 
 // Helper — get tenantId from session or current request
 function getTenantId(req) {
@@ -159,7 +163,7 @@ router.get('/stats', async (req, res) => {
 
 // GET /admin-api/tenant — current tenant info
 router.get('/tenant', (req, res) => {
-  res.json({ tenant: req.tenant });
+  res.json({ tenant: req.tenant, can_onboard: tenantsRouter.isRootAdmin(req) });
 });
 
 module.exports = router;

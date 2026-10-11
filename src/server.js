@@ -16,6 +16,7 @@ const { verifyLimiter, createLimiter, loginLimiter, tokensLimiter } = require('.
 const { requireDemoAuth }    = require('./middleware/demoAuth');
 const { requireAdminAuth }   = require('./middleware/adminAuth');
 const { tenantResolver }     = require('./middleware/tenantResolver');
+const { isRootAdmin }        = require('./routes/tenants');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -101,7 +102,7 @@ app.use('/admin-api', adminRouter);
 
 // Static files - skip protected files so they hit auth middleware below
 app.use((req, res, next) => {
-  const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html'];
+  const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html', '/onboard.html'];
   if (blocked.includes(req.path)) return next();
   express.static(path.join(__dirname, '../public'))(req, res, next);
 });
@@ -125,6 +126,11 @@ app.get('/admin', requireAdminAuth, (req, res) =>
 app.get('/admin.html', requireAdminAuth, (req, res) =>
   res.sendFile(path.join(__dirname, '../public/admin.html'))
 );
+// Institution onboarding: IL admin on the root tenant only
+const sendOnboard = (req, res) => res.sendFile(path.join(__dirname, '../public/onboard.html'));
+const onboardGuard = (req, res, next) => isRootAdmin(req) ? next() : res.redirect('/admin');
+app.get('/admin/onboard', requireAdminAuth, onboardGuard, sendOnboard);
+app.get('/onboard.html',  requireAdminAuth, onboardGuard, sendOnboard);
 app.get('/admin-login.html', (req, res) =>
   res.sendFile(path.join(__dirname, '../public/admin-login.html'))
 );
