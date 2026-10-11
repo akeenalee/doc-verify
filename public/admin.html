@@ -257,6 +257,27 @@
 
 <div class="success-toast" id="toast"></div>
 
+<!-- Activate Token Modal -->
+<div class="modal-overlay" id="activate-modal">
+  <div class="modal-box">
+    <div class="modal-title">Reactivate Access Link</div>
+    <div class="modal-sub">Choose how long this link should remain active.</div>
+    <div class="modal-label">New Duration</div>
+    <div class="duration-options">
+      <button class="dur-btn" data-days="7">7 Days</button>
+      <button class="dur-btn" data-days="30">30 Days</button>
+      <button class="dur-btn" data-days="90">90 Days</button>
+      <button class="dur-btn" data-days="0">Never Expires</button>
+      <button class="dur-btn" data-days="custom" style="grid-column:span 2">Custom...</button>
+    </div>
+    <input type="number" class="custom-dur" id="custom-days" placeholder="Enter number of days" min="1" max="365"/>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="activate-cancel">Cancel</button>
+      <button class="modal-confirm" id="activate-confirm">Activate Link</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const BASE = window.location.origin;
 
@@ -561,26 +582,5 @@
   loadStats();
   loadTokens();
 </script>
-<!-- Activate Token Modal -->
-<div class="modal-overlay" id="activate-modal">
-  <div class="modal-box">
-    <div class="modal-title">Reactivate Access Link</div>
-    <div class="modal-sub">Choose how long this link should remain active.</div>
-    <div class="modal-label">New Duration</div>
-    <div class="duration-options">
-      <button class="dur-btn" data-days="7">7 Days</button>
-      <button class="dur-btn" data-days="30">30 Days</button>
-      <button class="dur-btn" data-days="90">90 Days</button>
-      <button class="dur-btn" data-days="0">Never Expires</button>
-      <button class="dur-btn" data-days="custom" style="grid-column:span 2">Custom...</button>
-    </div>
-    <input type="number" class="custom-dur" id="custom-days" placeholder="Enter number of days" min="1" max="365"/>
-    <div class="modal-actions">
-      <button class="modal-cancel" id="activate-cancel">Cancel</button>
-      <button class="modal-confirm" id="activate-confirm">Activate Link</button>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>
