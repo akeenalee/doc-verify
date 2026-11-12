@@ -108,6 +108,34 @@ router.get('/me', requireStudentAuth, async (req, res) => {
   }
 });
 
+// GET /api/tokens/my-documents: this student's documents, matched by matric number within the tenant.
+// Institution isn't matched because the Registrar's issued_by text may differ from what the
+// student typed at registration; tenant_id is the boundary.
+router.get('/my-documents', requireStudentAuth, async (req, res) => {
+  const tenantId = req.tenant.id;
+  try {
+    const student = await pool.query(
+      'SELECT matric_number FROM student_tokens WHERE id=$1 AND tenant_id=$2',
+      [req.session.studentId, tenantId]
+    );
+    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
+
+    const { matric_number } = student.rows[0];
+    const docs = await pool.query(
+      `SELECT doc_id, title, issued_to, issued_by, doc_type, issue_date,
+              expiry_date, status, created_at
+       FROM documents
+       WHERE LOWER(metadata->>'matric_number')=LOWER($1) AND tenant_id=$2
+       ORDER BY created_at DESC`,
+      [matric_number, tenantId]
+    );
+    res.json({ documents:docs.rows, total:docs.rows.length, matric_number });
+  } catch (err) {
+    console.error('My documents error:', err);
+    res.status(500).json({ error: 'Failed to fetch documents.' });
+  }
+});
+
 router.get('/log', requireStudentAuth, async (req, res) => {
   const tenantId = req.tenant.id;
   try {
