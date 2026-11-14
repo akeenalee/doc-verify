@@ -116,6 +116,7 @@
   <div style="display:flex;gap:10px;margin-bottom:20px">
     <button class="tab-btn active" id="tab-tokens-btn">Demo Tokens</button>
     <button class="tab-btn" id="tab-visitors-btn">All Visitors</button>
+    <button class="tab-btn" id="tab-institutions-btn" style="display:none">Institutions</button>
   </div>
 
   <!-- TOKENS PANEL -->
@@ -254,6 +255,39 @@
     </div>
   </div>
 
+  <!-- INSTITUTIONS PANEL (IL root admin only) -->
+  <div id="panel-institutions" style="display:none">
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Onboarded Institutions</h2>
+          <div class="sub">Every institution on the platform. Use <a href="/admin/onboard" style="color:#B8860B">Onboard institution</a> to add one.</div>
+        </div>
+        <button class="tab-btn" id="refresh-institutions-btn">Refresh</button>
+      </div>
+      <div class="scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Institution</th>
+              <th>Subdomain</th>
+              <th>Code</th>
+              <th>Type</th>
+              <th>Docs</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Presenter Link</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="institutions-body">
+            <tr><td colspan="9" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div class="success-toast" id="toast"></div>
@@ -318,18 +352,25 @@
   });
 
   // ── TABS ──────────────────────────────────────────────────────────────────
+  const TABS = ['tokens', 'visitors', 'institutions'];
+  function showTab(name) {
+    TABS.forEach(n => {
+      document.getElementById('panel-' + n).style.display = n === name ? 'block' : 'none';
+      document.getElementById('tab-' + n + '-btn').classList.toggle('active', n === name);
+    });
+  }
+  document.getElementById('tab-institutions-btn').addEventListener('click', () => {
+    showTab('institutions');
+    loadInstitutions();
+  });
+  document.getElementById('refresh-institutions-btn').addEventListener('click', loadInstitutions);
+
   document.getElementById('tab-tokens-btn').addEventListener('click', () => {
-    document.getElementById('panel-tokens').style.display = 'block';
-    document.getElementById('panel-visitors').style.display = 'none';
-    document.getElementById('tab-tokens-btn').classList.add('active');
-    document.getElementById('tab-visitors-btn').classList.remove('active');
+    showTab('tokens');
   });
 
   document.getElementById('tab-visitors-btn').addEventListener('click', () => {
-    document.getElementById('panel-tokens').style.display = 'none';
-    document.getElementById('panel-visitors').style.display = 'block';
-    document.getElementById('tab-tokens-btn').classList.remove('active');
-    document.getElementById('tab-visitors-btn').classList.add('active');
+    showTab('visitors');
     loadVisitors();
   });
 
@@ -343,7 +384,10 @@
 
   // Onboarding is only offered on the Innovation Lens root tenant
   fetch('/admin-api/tenant').then(r => r.json()).then(d => {
-    if (d.can_onboard) document.getElementById('onboard-link').style.display = '';
+    if (d.can_onboard) {
+      document.getElementById('onboard-link').style.display = '';
+      document.getElementById('tab-institutions-btn').style.display = '';
+    }
   }).catch(() => {});
 
   // ── LOAD STATS ────────────────────────────────────────────────────────────
@@ -583,6 +627,80 @@
       toast('Copied.');
     });
   }
+
+  // ── INSTITUTIONS (IL root admin only) ──────────────────────────────────
+  let ROOT_SUBDOMAIN = 'demo';
+  function fmtDate(d) {
+    return d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  }
+  async function loadInstitutions() {
+    const body = document.getElementById('institutions-body');
+    try {
+      const res  = await fetch('/admin-api/tenants');
+      const data = await res.json();
+      if (!res.ok) { body.innerHTML = '<tr><td colspan="9" class="empty">' + esc(data.error || 'Failed to load.') + '</td></tr>'; return; }
+      ROOT_SUBDOMAIN = data.root_subdomain || ROOT_SUBDOMAIN;
+      const list = data.tenants || [];
+      if (!list.length) { body.innerHTML = '<tr><td colspan="9" class="empty">No institutions yet.</td></tr>'; return; }
+      body.innerHTML = list.map(t => {
+        const isRoot = t.subdomain === ROOT_SUBDOMAIN;
+        const status = isRoot ? '<span class="status-badge expired">ROOT</span>'
+          : t.active ? '<span class="status-badge active">Active</span>'
+          : '<span class="status-badge inactive">Suspended</span>';
+        let presenter = '<span style="color:#8AADCC;font-size:12px">n/a</span>';
+        if (!isRoot) {
+          presenter = t.presenter_link
+            ? '<div class="link-pill" title="' + esc(t.presenter_link) + '" data-copy="' + esc(t.presenter_link) + '">' + esc(t.presenter_link) + '</div>'
+              + '<div style="font-size:11px;color:#8AADCC;margin-top:3px">Expires ' + esc(fmtDate(t.presenter_expires_at)) + '</div>'
+            : '<button class="action-btn copy" data-newlink="' + esc(t.id) + '">Create link</button>';
+        }
+        const actions = isRoot ? '' : t.active
+          ? '<button class="action-btn revoke" data-toggle="' + esc(t.id) + '" data-active="false" data-name="' + esc(t.name) + '">Suspend</button>'
+          : '<button class="action-btn activate" data-toggle="' + esc(t.id) + '" data-active="true" data-name="' + esc(t.name) + '">Restore</button>';
+        const copyBtn = (!isRoot && t.presenter_link)
+          ? '<button class="action-btn copy" style="margin-right:4px" data-copy="' + esc(t.presenter_link) + '">Copy</button>' : '';
+        return '<tr>'
+          + '<td><strong style="color:#fff">' + esc(t.name) + '</strong>'
+          +   (t.contact_email ? '<div style="font-size:11px;color:#8AADCC;margin-top:2px">' + esc(t.contact_email) + '</div>' : '') + '</td>'
+          + '<td><a href="' + esc(t.url) + '" target="_blank" rel="noopener" style="color:#8AADCC">' + esc(t.subdomain) + '</a></td>'
+          + '<td>' + esc(t.short_code) + '</td>'
+          + '<td style="font-size:12px">' + esc(t.institution_type) + '</td>'
+          + '<td>' + esc(String(t.documents || 0)) + '</td>'
+          + '<td>' + status + '</td>'
+          + '<td style="font-size:12px;color:#8AADCC">' + esc(fmtDate(t.created_at)) + '</td>'
+          + '<td style="max-width:220px">' + presenter + '</td>'
+          + '<td style="white-space:nowrap">' + copyBtn + actions + '</td>'
+          + '</tr>';
+      }).join('');
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="9" class="empty">Failed to load.</td></tr>';
+    }
+  }
+
+  document.getElementById('institutions-body').addEventListener('click', async e => {
+    const el = e.target.closest('[data-copy],[data-toggle],[data-newlink]');
+    if (!el) return;
+    if (el.dataset.copy) { copyToClipboard(el.dataset.copy); return; }
+    if (el.dataset.newlink) {
+      el.disabled = true;
+      const res = await fetch('/admin-api/tenants/' + el.dataset.newlink + '/presenter-link', { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { el.disabled = false; toast(d.error || 'Failed to create link.'); return; }
+      copyToClipboard(d.presenter_link);
+      loadInstitutions();
+      return;
+    }
+    const active = el.dataset.active === 'true';
+    if (!active && !confirm('Suspend ' + el.dataset.name + '? Its subdomain will stop resolving until restored.')) return;
+    el.disabled = true;
+    const res = await fetch('/admin-api/tenants/' + el.dataset.toggle + '/active', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { el.disabled = false; toast(d.error || 'Failed to update institution.'); return; }
+    toast(active ? 'Institution restored.' : 'Institution suspended.');
+    loadInstitutions();
+  });
 
   // ── INIT ──────────────────────────────────────────────────────────────────
   loadStats();

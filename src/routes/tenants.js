@@ -54,6 +54,24 @@ function tenantUrl(req, subdomain) {
   return `https://${subdomain}.${ROOT_DOMAIN}`;
 }
 
+const PRESENTER_LABEL = 'Presenter link';
+
+function presenterUrl(tenantBaseUrl, token) {
+  return `${tenantBaseUrl}/demo/access?token=${token}`;
+}
+
+// 30-day, unlimited-use demo token on the tenant, so the IL presenter can
+// open the institution's subdomain without the demo password.
+async function issuePresenterToken(db, tenant, note) {
+  const token = crypto.randomBytes(24).toString('hex');
+  await db.query(
+    `INSERT INTO demo_tokens (token, label, name, company, expires_at, max_uses, notes, tenant_id)
+     VALUES ($1,$2,$3,$4,NOW() + INTERVAL '30 days',0,$5,$6)`,
+    [token, PRESENTER_LABEL, 'Innovation Lens presenter', tenant.name, note, tenant.id]
+  );
+  return token;
+}
+
 function clean(val, max) {
   if (val === undefined || val === null) return null;
   const s = String(val).trim();
@@ -106,12 +124,24 @@ router.get('/', async (req, res) => {
       `SELECT t.id, t.name, t.subdomain, t.short_code, t.institution_type,
               t.contact_email, t.primary_colour, t.accent_colour, t.logo_url,
               t.plan, t.active, t.created_at,
-              (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id)::int AS documents
+              (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id)::int AS documents,
+              p.token AS presenter_token, p.expires_at AS presenter_expires_at
        FROM tenants t
-       ORDER BY t.created_at DESC`
+       LEFT JOIN LATERAL (
+         SELECT dt.token, dt.expires_at FROM demo_tokens dt
+         WHERE dt.tenant_id = t.id AND dt.label = $1 AND dt.is_active
+           AND (dt.expires_at IS NULL OR dt.expires_at > NOW())
+           AND (dt.max_uses = 0 OR dt.use_count < dt.max_uses)
+         ORDER BY dt.expires_at DESC NULLS FIRST LIMIT 1
+       ) p ON TRUE
+       ORDER BY t.created_at DESC`,
+      [PRESENTER_LABEL]
     );
     res.json({
-      tenants: result.rows.map(t => ({ ...t, url: tenantUrl(req, t.subdomain) })),
+      tenants: result.rows.map(({ presenter_token, ...t }) => {
+        const url = tenantUrl(req, t.subdomain);
+        return { ...t, url, presenter_link: presenter_token ? presenterUrl(url, presenter_token) : null };
+      }),
       root_subdomain: ROOT_TENANT,
     });
   } catch (e) {
@@ -165,14 +195,8 @@ router.post('/', async (req, res) => {
 
     let presenterLink = null;
     if (wantLink) {
-      const token = crypto.randomBytes(24).toString('hex');
-      await client.query(
-        `INSERT INTO demo_tokens (token, label, name, company, expires_at, max_uses, notes, tenant_id)
-         VALUES ($1,$2,$3,$4,NOW() + INTERVAL '30 days',0,$5,$6)`,
-        [token, 'Presenter link', 'Innovation Lens presenter', tenant.name,
-         'Created automatically when the institution was onboarded', tenant.id]
-      );
-      presenterLink = `${url}/demo/access?token=${token}`;
+      const token = await issuePresenterToken(client, tenant, 'Created automatically when the institution was onboarded');
+      presenterLink = presenterUrl(url, token);
     }
 
     await client.query('COMMIT');
@@ -195,6 +219,26 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to create institution.' });
   } finally {
     client.release();
+  }
+});
+
+// POST /admin-api/tenants/:id/presenter-link
+// Issue a fresh 30-day presenter link for an institution (e.g. the one
+// created at onboarding has expired). Not offered for the root tenant.
+router.post('/:id/presenter-link', async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'Institution not found.' });
+  try {
+    const result = await pool.query(
+      'SELECT id, name, subdomain FROM tenants WHERE id=$1 AND subdomain <> $2',
+      [req.params.id, ROOT_TENANT]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Institution not found.' });
+    const tenant = result.rows[0];
+    const token  = await issuePresenterToken(pool, tenant, 'Issued from the admin Institutions tab');
+    res.status(201).json({ presenter_link: presenterUrl(tenantUrl(req, tenant.subdomain), token) });
+  } catch (e) {
+    console.error('Presenter link error:', e.message);
+    res.status(500).json({ error: 'Failed to create presenter link.' });
   }
 });
 
