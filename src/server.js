@@ -114,6 +114,13 @@ app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));
 app.use('/app-api', staffAppRouter);
 
+// Institutions use the staff workspace; only the root demo tenant keeps the
+// old single-login dashboard (used for presentations)
+const ROOT_TENANT = (process.env.ROOT_TENANT_SUBDOMAIN || 'demo').toLowerCase();
+const toWorkspace = (req, res, next) =>
+  (req.tenant && req.tenant.subdomain !== ROOT_TENANT) ? res.redirect(302, '/app/') : next();
+app.get(['/', '/index.html', '/help.html', '/demo-login.html'], toWorkspace);
+
 // Static files - skip protected files so they hit auth middleware below
 app.use((req, res, next) => {
   const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html', '/onboard.html'];
