@@ -2,8 +2,8 @@ const express = require('express');
 const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { initializeTransaction, verifyTransaction, BASE_URL } = require('../utils/paystack');
-const { verifyDocSignature, signDocId }                    = require('../utils/docUtils');
+const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
+const { verifyDocSignature, signDocId, tenantBaseUrl, tenantSubdomain } = require('../utils/docUtils');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
     );
 
     if (!result.rows.length) {
-      await logScan(doc, ip, userAgent, 'not_found', 'none');
+      await logScan(doc, ip, userAgent, 'not_found', 'none', req._tenantId);
       return res.send(renderPage('Document Not Found',
         `No record found for ID: <strong>${escHtml(doc)}</strong>.`, 'error', null));
     }
@@ -62,7 +62,7 @@ router.get('/', async (req, res) => {
            WHERE id = $1`,
           [tokenRow.rows[0].id]
         );
-        await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'student_token');
+        await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'student_token', req._tenantId);
         return res.send(renderResult(docData, isExpired));
       }
     }
@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
              WHERE paystack_ref = $1`,
             [paid]
           );
-          await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'employer_payment');
+          await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'employer_payment', req._tenantId);
           return res.send(renderResult(docData, isExpired));
         }
       } catch (e) {
@@ -243,7 +243,7 @@ router.post('/api/initiate-payment', async (req, res) => {
 
   try {
     const docResult = await pool.query(
-      'SELECT doc_id, title, issued_to, status, expiry_date FROM documents WHERE doc_id = $1',
+      'SELECT doc_id, title, issued_to, status, expiry_date, tenant_id FROM documents WHERE doc_id = $1',
       [doc_id]
     );
     if (!docResult.rows.length) return res.status(404).json({ error: 'Document not found.' });
@@ -268,7 +268,8 @@ router.post('/api/initiate-payment', async (req, res) => {
         title:     doc.title,
         issued_to: doc.issued_to,
       },
-      callbackUrl: `${BASE_URL()}/verify/api/payment-callback`,
+      // Return the payer to the issuing institution's subdomain, not BASE_URL (demo)
+      callbackUrl: `${tenantBaseUrl(await tenantSubdomain(doc.tenant_id))}/verify/api/payment-callback`,
     });
 
     await pool.query(
@@ -313,11 +314,10 @@ async function resolveGeo(ip) {
   } catch { return 'Unknown'; }
 }
 
-async function logScan(docId, ip, userAgent, result, paymentMethod = 'none') {
+async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', tenantId = null) {
   try {
     // Resolve geolocation server-side
     const geo = await resolveGeo(ip);
-    const tenantId = req._tenantId || null;
     await pool.query(
       `INSERT INTO verification_log (doc_id, ip_address, user_agent, result, payment_method, geo_location, tenant_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
