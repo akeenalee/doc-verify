@@ -136,13 +136,14 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/me', requireStaff(), (req, res) => {
+router.get('/me', requireStaff(), async (req, res) => {
   const t = req.tenant;
+  const logo_version = await require('../utils/branding').logoVersion(t.id);
   res.json({
     user: req.staff,
     tenant: { name: t.name, subdomain: t.subdomain, short_code: t.short_code,
               primary_colour: t.primary_colour, accent_colour: t.accent_colour,
-              logo_url: t.logo_url, institution_type: t.institution_type },
+              logo_url: t.logo_url, logo_version, institution_type: t.institution_type },
   });
 });
 

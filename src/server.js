@@ -5,6 +5,7 @@ const cors    = require('cors');
 const path    = require('path');
 const session = require('express-session');
 const pool    = require('./db/pool');
+const { logoVersion } = require('./utils/branding');
 
 const documentsRouter = require('./routes/documents');
 const verifyRouter    = require('./routes/verify');
@@ -60,7 +61,11 @@ app.set('trust proxy', 1);
 // Webhook MUST be before express.json()
 app.use('/api/webhook', webhookRouter);
 
-app.use(express.json());
+// Logo and signature uploads arrive as base64 JSON, so only the settings API
+// gets a larger body limit; everything else keeps the 100 kB default
+const jsonSmall = express.json();
+const jsonLarge = express.json({ limit: '1mb' });
+app.use((req, res, next) => (req.path.startsWith('/app-api/settings/') ? jsonLarge : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: false }));
 
 // Session store
@@ -104,6 +109,7 @@ app.use('/admin-api', adminRouter);
 
 // Staff app API (per-tenant staff accounts, roles and TOTP)
 app.use('/app-api/auth', staffAuthRouter);
+app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api', staffAppRouter);
 
 // Static files - skip protected files so they hit auth middleware below
@@ -157,11 +163,27 @@ app.use('/verify',        verifyLimiter, verifyRouter);
 app.use('/api/documents', requireDemoAuth, createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensLimiter, tokensRouter);
 
+// Tenant logo, served same-origin because the CSP blocks external images.
+// Public: it's printed on every document anyway.
+app.get('/brand/logo', async (req, res) => {
+  try {
+    if (!req.tenant) return res.status(404).end();
+    const r = await pool.query('SELECT logo_data, logo_mime, logo_updated_at FROM tenants WHERE id = $1', [req.tenant.id]);
+    const t = r.rows[0];
+    if (!t || !t.logo_data) return res.status(404).end();
+    res.setHeader('Content-Type', t.logo_mime || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.end(t.logo_data);
+  } catch (e) { res.status(404).end(); }
+});
+
 // Public tenant info — used by the dashboard to configure the UI
 // Returns only safe public fields, no sensitive config
-app.get('/api/tenant-info', (req, res) => {
+app.get('/api/tenant-info', async (req, res) => {
   if (!req.tenant) return res.json({ institution_type: 'academic', name: 'UniVerify' });
   res.json({
+    logo_version:     await logoVersion(req.tenant.id),
     name:             req.tenant.name,
     institution_type: req.tenant.institution_type,
     primary_colour:   req.tenant.primary_colour,
@@ -176,6 +198,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOSt
 
 app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((err, req, res, next) => {
+  // Body parser errors (too large, malformed JSON) are the client's, not ours
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Upload too large.' });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed request.' });
   console.error(err);
   res.status(500).json({ error: 'Internal server error.' });
 });
