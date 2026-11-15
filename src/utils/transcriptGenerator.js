@@ -2,7 +2,7 @@ const PDFDocument = require('pdfkit');
 const { generateQRBuffer } = require('./docUtils');
 
 async function generateTranscript(docData, outputStream) {
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
 
   const doc = new PDFDocument({
     size: 'A4',
@@ -320,7 +320,7 @@ async function generateTranscript(docData, outputStream) {
     doc.rect(ML, H - 30, CW, 0.5).fill('#D0D5DD');
     doc.font('Helvetica').fontSize(7).fillColor(MGRAY)
        .text(
-         `Powered by UniVerify  ·  verify.akeenalee.com  ·  ${docData.doc_id}`,
+         `Powered by UniVerify  ·  univerify.ng  ·  ${docData.doc_id}`,
          ML, H - 22, { width: CW, align: 'center' }
        );
   }
