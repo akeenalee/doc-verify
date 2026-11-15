@@ -12,6 +12,8 @@ const tokensRouter    = require('./routes/tokens');
 const webhookRouter   = require('./routes/webhook');
 const demoRouter      = require('./routes/demo');
 const adminRouter     = require('./routes/admin');
+const staffAuthRouter = require('./routes/staffAuth');
+const staffAppRouter  = require('./routes/staffApp');
 const { verifyLimiter, createLimiter, loginLimiter, tokensLimiter } = require('./middleware/rateLimiter');
 const { requireDemoAuth }    = require('./middleware/demoAuth');
 const { requireAdminAuth }   = require('./middleware/adminAuth');
@@ -100,6 +102,10 @@ app.use('/demo', demoRouter);
 // Admin API routes
 app.use('/admin-api', adminRouter);
 
+// Staff app API (per-tenant staff accounts, roles and TOTP)
+app.use('/app-api/auth', staffAuthRouter);
+app.use('/app-api', staffAppRouter);
+
 // Static files - skip protected files so they hit auth middleware below
 app.use((req, res, next) => {
   const blocked = ['/', '/index.html', '/help.html', '/admin', '/admin.html', '/onboard.html'];
@@ -134,6 +140,10 @@ app.get('/onboard.html',  requireAdminAuth, onboardGuard, sendOnboard);
 app.get('/admin-login.html', (req, res) =>
   res.sendFile(path.join(__dirname, '../public/admin-login.html'))
 );
+
+// Staff app shell: the page itself is public, every API call it makes is guarded
+const sendApp = (req, res) => res.sendFile(path.join(__dirname, '../public/app/index.html'));
+app.get(['/app', '/app/'], sendApp);
 
 // Public pages
 app.get('/student',      (req, res) => res.sendFile(path.join(__dirname, '../public/student.html')));

@@ -20,6 +20,8 @@ router.get('/', async (req, res) => {
   // Backwards compatible: URLs without sig still work (existing printed QR codes)
   // Once all QR codes are regenerated, enforce sig required
   if (sig && !verifyDocSignature(doc, sig)) {
+    const tip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    await logScan(doc, tip, req.headers['user-agent'] || '', 'tampered', 'none', req._tenantId);
     return res.status(400).send(renderPage(
       'Invalid Verification Link',
       'This verification link has been tampered with and cannot be trusted. ' +
@@ -35,7 +37,7 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, doc_id, title, issued_to, issued_by, doc_type,
-              issue_date, expiry_date, status, metadata
+              issue_date, expiry_date, status, metadata, tenant_id, superseded_by
        FROM documents WHERE doc_id = $1`,
       [doc]
     );
@@ -48,14 +50,23 @@ router.get('/', async (req, res) => {
 
     const docData   = result.rows[0];
     const isExpired = docData.expiry_date && new Date(docData.expiry_date) < new Date();
+
+    // A replaced document needs no payment: say so, show nothing about the holder
+    if (docData.status === 'superseded') {
+      await logScan(doc, ip, userAgent, 'superseded', 'none', req._tenantId);
+      return res.send(renderPage('Document Superseded',
+        'The institution has issued a newer version of this document. Ask the holder for their current copy.',
+        'superseded', null));
+    }
+
     const matric    = docData.metadata?.matric_number;
 
     // 1. Check student token balance
     if (matric) {
       const tokenRow = await pool.query(
         `SELECT id, token_balance FROM student_tokens
-         WHERE matric_number = $1 AND institution = $2`,
-        [matric, docData.issued_by]
+         WHERE matric_number = $1 AND institution = $2 AND tenant_id = $3`,
+        [matric, docData.issued_by, docData.tenant_id]
       );
       if (tokenRow.rows.length && tokenRow.rows[0].token_balance > 0) {
         await pool.query(
@@ -63,7 +74,7 @@ router.get('/', async (req, res) => {
            WHERE id = $1`,
           [tokenRow.rows[0].id]
         );
-        await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'student_token', req._tenantId);
+        await logScan(doc, ip, userAgent, scanResult(docData), 'student_token', req._tenantId);
         return res.send(renderResult(docData, isExpired));
       }
     }
@@ -79,7 +90,7 @@ router.get('/', async (req, res) => {
              WHERE paystack_ref = $1`,
             [paid]
           );
-          await logScan(doc, ip, userAgent, docData.status === 'revoked' ? 'revoked' : 'found', 'employer_payment', req._tenantId);
+          await logScan(doc, ip, userAgent, scanResult(docData), 'employer_payment', req._tenantId);
           return res.send(renderResult(docData, isExpired));
         }
       } catch (e) {
@@ -90,7 +101,7 @@ router.get('/', async (req, res) => {
 
     // 3. No token, no payment - redirect to payment page
     return res.redirect(
-      `/pay.html?doc=${encodeURIComponent(doc)}&title=${encodeURIComponent(docData.title)}&issued_to=${encodeURIComponent(docData.issued_to)}`
+      `/pay.html?doc=${encodeURIComponent(doc)}&type=${encodeURIComponent(docData.doc_type || 'Document')}&issued_by=${encodeURIComponent(docData.issued_by)}`
     );
 
   } catch (err) {
@@ -226,17 +237,23 @@ router.get('/api/:docId', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT doc_id, title, issued_to, issued_by, doc_type,
-              issue_date, expiry_date, status
+              issue_date, expiry_date, status, tenant_id
        FROM documents WHERE doc_id = $1`,
       [docId]
     );
     if (!result.rows.length) return res.status(404).json({ valid: false, reason: 'not_found' });
     const doc       = result.rows[0];
     const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date();
+    // Public callers (the pay page) get status only; holder details need a
+    // dashboard or staff session on the issuing tenant
+    const s = req.session || {};
+    const insider = req.tenant && doc.tenant_id === req.tenant.id &&
+      ((s.demoAuth && s.tenantId === req.tenant.id) || s.staffTenantId === req.tenant.id);
+    const { tenant_id, ...full } = doc;
     res.json({
       valid:    doc.status === 'active' && !isExpired,
       status:   isExpired ? 'expired' : doc.status,
-      document: doc,
+      document: insider ? full : { doc_id: doc.doc_id, doc_type: doc.doc_type, issued_by: doc.issued_by, status: doc.status },
     });
   } catch (err) {
     res.status(500).json({ valid: false, reason: 'server_error' });
@@ -258,6 +275,9 @@ router.post('/api/initiate-payment', async (req, res) => {
     const doc = docResult.rows[0];
 
     // Reject payment if document is revoked
+    if (doc.status === 'superseded') {
+      return res.status(400).json({ error: 'A newer version of this document exists. Ask the holder for their current copy.' });
+    }
     if (doc.status === 'revoked') {
       return res.status(400).json({ error: 'This document has been revoked and cannot be verified.' });
     }
@@ -343,10 +363,18 @@ async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', ten
   }
 }
 
+function scanResult(docData) {
+  if (docData.status === 'revoked') return 'revoked';
+  if (docData.status === 'superseded') return 'superseded';
+  return 'found';
+}
+
 function renderResult(docData, isExpired) {
   docData = { ...docData,
     _previewUrl: `/verify/doc-preview/${encodeURIComponent(docData.doc_id)}?t=${signPreviewToken(docData.doc_id)}` };
   if (docData.status === 'revoked') return renderPage('Document Revoked', null, 'revoked', docData);
+  if (docData.status === 'superseded') return renderPage('Document Superseded',
+    'The institution has issued a newer version of this document. Ask the holder for their current copy.', 'superseded', null);
   if (isExpired) return renderPage('Document Expired', null, 'expired', docData);
   return renderPage('Document Verified', null, 'verified', docData);
 }
@@ -367,6 +395,7 @@ function renderPage(pageTitle, message, state, docData) {
     verified: { icon: '&#10003;', color: '#0f6e56', bg: '#e1f5ee', label: 'Verified Authentic', border: '#9FE1CB' },
     expired:  { icon: '&#8987;',  color: '#854F0B', bg: '#faeeda', label: 'Document Expired',   border: '#FAC775' },
     revoked:  { icon: '&#10007;', color: '#A32D2D', bg: '#fcebeb', label: 'Document Revoked',   border: '#F7C1C1' },
+    superseded: { icon: '&#8635;', color: '#854F0B', bg: '#faeeda', label: 'Superseded',        border: '#FAC775' },
     error:    { icon: '&#33;',    color: '#666666', bg: '#f5f5f5', label: 'Not Found',           border: '#dddddd' },
   };
   const s = states[state] || states.error;

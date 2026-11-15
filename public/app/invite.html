@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Set up your account</title>
+  <link rel="stylesheet" href="/app/app.css"/>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="t-name" data-tenant-name>UniVerify</div>
+      <div class="t-sub">Account setup · UniVerify</div>
+    </div>
+    <div class="auth-body">
+      <div class="steps"><span id="s1" class="on"></span><span id="s2"></span><span id="s3"></span></div>
+      <div id="msg" class="alert"></div>
+
+      <form id="step-1" style="display:none">
+        <h1>Set your password</h1>
+        <p class="lead" id="who"></p>
+        <div class="field"><label for="full_name">Full name</label>
+          <input type="text" id="full_name" autocomplete="name" required/></div>
+        <div class="field"><label for="pw1">Password</label>
+          <input type="password" id="pw1" autocomplete="new-password" required/>
+          <div class="hint">At least 10 characters, with letters and numbers.</div></div>
+        <div class="field"><label for="pw2">Confirm password</label>
+          <input type="password" id="pw2" autocomplete="new-password" required/></div>
+        <button class="btn block" id="btn-1" type="submit">Continue</button>
+      </form>
+
+      <form id="step-2" style="display:none" autocomplete="off">
+        <h1>Turn on two-factor sign-in</h1>
+        <p class="lead">Scan this with Google Authenticator, Microsoft Authenticator or any TOTP app, then enter the 6-digit code it shows.</p>
+        <div class="qr-box"><img id="qr" alt="Authenticator QR code"/></div>
+        <p class="muted" style="font-size:12px;margin:0 0 6px;text-align:center">Can't scan? Enter this key manually:</p>
+        <div class="secret" id="secret"></div>
+        <div class="field" style="margin-top:16px"><input class="code-input" id="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code"/></div>
+        <button class="btn block" id="btn-2" type="submit">Verify and finish</button>
+      </form>
+
+      <div id="step-3" style="display:none">
+        <h1>Save your recovery codes</h1>
+        <p class="lead">If you lose your phone, each code below signs you in once. Store them somewhere safe. They won't be shown again.</p>
+        <div class="codes" id="codes"></div>
+        <button class="btn secondary block" id="dl" type="button">Download codes</button>
+        <button class="btn block" style="margin-top:8px" id="go" type="button">I've saved them, open the workspace</button>
+      </div>
+
+      <div id="bad" style="display:none">
+        <h1>Link not valid</h1>
+        <p class="lead" id="bad-msg">This setup link is invalid or has expired. Ask your institution's Owner, or Innovation Lens, for a new one.</p>
+        <a class="btn secondary block" href="/app/login.html">Go to sign in</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/app/brand.js"></script>
+<script>
+(function () {
+  uvBrand();
+  const token = new URLSearchParams(location.search).get('token') || '';
+  const msg = document.getElementById('msg');
+  let codes = [];
+  function step(n) {
+    ['step-1', 'step-2', 'step-3', 'bad'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById(n === 0 ? 'bad' : 'step-' + n).style.display = 'block';
+    [1, 2, 3].forEach(i => document.getElementById('s' + i).className = i <= n ? 'on' : '');
+    msg.className = 'alert';
+  }
+  (async function init() {
+    try {
+      const r = await fetch('/app-api/auth/invite?token=' + encodeURIComponent(token), { headers: { Accept: 'application/json' } });
+      const d = await r.json();
+      if (!r.ok) { document.getElementById('bad-msg').textContent = d.error || 'This setup link is invalid.'; return step(0); }
+      document.getElementById('who').textContent = 'Signing in as ' + d.email + ' (' + d.roles.join(', ') + ') at ' + d.tenant + '.';
+      document.getElementById('full_name').value = d.full_name || '';
+      step(1);
+    } catch (e) { step(0); }
+  })();
+
+  document.getElementById('step-1').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const pw1 = document.getElementById('pw1').value, pw2 = document.getElementById('pw2').value;
+    if (pw1 !== pw2) return uvShow(msg, 'The two passwords don\'t match.');
+    const btn = document.getElementById('btn-1'); btn.disabled = true;
+    try {
+      const d = await uvPost('/app-api/auth/invite/start', { token, password: pw1, full_name: document.getElementById('full_name').value });
+      document.getElementById('qr').src = d.qr;
+      document.getElementById('secret').textContent = d.secret.replace(/(.{4})/g, '$1 ').trim();
+      step(2);
+      document.getElementById('code').focus();
+    } catch (e) { uvShow(msg, e.message); }
+    finally { btn.disabled = false; }
+  });
+
+  document.getElementById('step-2').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const btn = document.getElementById('btn-2'); btn.disabled = true;
+    try {
+      const d = await uvPost('/app-api/auth/invite/confirm', { token, code: document.getElementById('code').value.replace(/\s/g, '') });
+      codes = d.recovery_codes || [];
+      const box = document.getElementById('codes');
+      box.innerHTML = '';
+      codes.forEach(c => { const s = document.createElement('div'); s.textContent = c; box.appendChild(s); });
+      step(3);
+    } catch (e) { uvShow(msg, e.message); }
+    finally { btn.disabled = false; }
+  });
+
+  document.getElementById('dl').addEventListener('click', () => {
+    const name = document.querySelector('[data-tenant-name]').textContent;
+    const blob = new Blob(['UniVerify recovery codes for ' + name + '\nEach code works once.\n\n' + codes.join('\n') + '\n'], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'univerify-recovery-codes.txt'; a.click();
+  });
+  document.getElementById('go').addEventListener('click', () => { location.href = '/app/'; });
+})();
+</script>
+</body>
+</html>

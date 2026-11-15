@@ -657,6 +657,7 @@
         const actions = isRoot ? '' : t.active
           ? '<button class="action-btn revoke" data-toggle="' + esc(t.id) + '" data-active="false" data-name="' + esc(t.name) + '">Suspend</button>'
           : '<button class="action-btn activate" data-toggle="' + esc(t.id) + '" data-active="true" data-name="' + esc(t.name) + '">Restore</button>';
+        const ownerBtn = '<button class="action-btn copy" style="margin-right:4px" data-owner="' + esc(t.id) + '" data-name="' + esc(t.name) + '">Invite owner</button>';
         const copyBtn = (!isRoot && t.presenter_link)
           ? '<button class="action-btn copy" style="margin-right:4px" data-copy="' + esc(t.presenter_link) + '">Copy</button>' : '';
         return '<tr>'
@@ -669,7 +670,7 @@
           + '<td>' + status + '</td>'
           + '<td style="font-size:12px;color:#8AADCC">' + esc(fmtDate(t.created_at)) + '</td>'
           + '<td style="max-width:220px">' + presenter + '</td>'
-          + '<td style="white-space:nowrap">' + copyBtn + actions + '</td>'
+          + '<td style="white-space:nowrap">' + ownerBtn + copyBtn + actions + '</td>'
           + '</tr>';
       }).join('');
     } catch (e) {
@@ -678,9 +679,26 @@
   }
 
   document.getElementById('institutions-body').addEventListener('click', async e => {
-    const el = e.target.closest('[data-copy],[data-toggle],[data-newlink]');
+    const el = e.target.closest('[data-copy],[data-toggle],[data-newlink],[data-owner]');
     if (!el) return;
     if (el.dataset.copy) { copyToClipboard(el.dataset.copy); return; }
+    if (el.dataset.owner) {
+      // First Owner for the institution's staff app; they invite the rest
+      const email = (prompt('Owner email for ' + el.dataset.name + ' (e.g. the Registrar):') || '').trim();
+      if (!email) return;
+      const fullName = (prompt('Owner full name:') || '').trim();
+      el.disabled = true;
+      const res = await fetch('/admin-api/tenants/' + el.dataset.owner + '/owner-invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, full_name: fullName })
+      });
+      const d = await res.json().catch(() => ({}));
+      el.disabled = false;
+      if (!res.ok) { toast(d.error || 'Failed to invite owner.'); return; }
+      copyToClipboard(d.link);
+      prompt((d.emailed ? 'Invite emailed to ' : 'Email not sent. Send this setup link to ') + d.email + ' (valid 72 hours, copied):', d.link);
+      return;
+    }
     if (el.dataset.newlink) {
       el.disabled = true;
       const res = await fetch('/admin-api/tenants/' + el.dataset.newlink + '/presenter-link', { method: 'POST' });
