@@ -39,23 +39,67 @@ function verifyDocSignature(docId, sig) {
   return crypto.timingSafeEqual(a, b) && sig === expected;
 }
 
+const ROOT_DOMAIN = process.env.TENANT_ROOT_DOMAIN || 'univerify.ng';
+const ROOT_TENANT = process.env.ROOT_TENANT_SUBDOMAIN || 'demo';
+
+/**
+ * Base URL for a tenant's public pages.
+ * - No subdomain, or the root tenant (demo): BASE_URL, unchanged behaviour.
+ * - BASE_URL on localhost: http://<sub>.localhost:<port> for local testing.
+ * - Otherwise: https://<sub>.<TENANT_ROOT_DOMAIN>.
+ */
+function tenantBaseUrl(subdomain) {
+  const base = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  if (!subdomain || subdomain === ROOT_TENANT) return base;
+  try {
+    const u = new URL(base);
+    if (u.hostname === 'localhost' || u.hostname.endsWith('.localhost')) {
+      return `${u.protocol}//${subdomain}.localhost${u.port ? ':' + u.port : ''}`;
+    }
+  } catch (_) { /* fall through */ }
+  return `https://${subdomain}.${ROOT_DOMAIN}`;
+}
+
 /**
  * Build the public verification URL for a document ID.
  * Includes an HMAC signature so the URL cannot be tampered with.
- * Format: /verify?doc=DOCID&sig=HMAC16
+ * The signature covers the doc ID only, so the host change doesn't affect it.
+ * Format: https://<tenant>.univerify.ng/verify?doc=DOCID&sig=HMAC16
  */
-function buildVerifyUrl(docId) {
-  const base = process.env.BASE_URL || 'http://localhost:3000';
-  const sig  = signDocId(docId);
-  return `${base}/verify?doc=${encodeURIComponent(docId)}&sig=${sig}`;
+function buildVerifyUrl(docId, subdomain) {
+  const sig = signDocId(docId);
+  return `${tenantBaseUrl(subdomain)}/verify?doc=${encodeURIComponent(docId)}&sig=${sig}`;
+}
+
+// tenant_id -> subdomain, so PDF generators can resolve the issuing tenant
+// from the document row regardless of which host the request came in on.
+const subdomainCache = new Map();
+async function tenantSubdomain(tenantId) {
+  if (!tenantId) return null;
+  if (subdomainCache.has(tenantId)) return subdomainCache.get(tenantId);
+  const pool = require('../db/pool');
+  const r = await pool.query('SELECT subdomain FROM tenants WHERE id = $1', [tenantId]);
+  const sub = r.rows[0]?.subdomain || null;
+  subdomainCache.set(tenantId, sub);
+  return sub;
+}
+
+// Accepts a subdomain string, a tenant object ({ subdomain }), or a document
+// row ({ tenant_id }).
+async function resolveSubdomain(tenantRef) {
+  if (!tenantRef) return null;
+  if (typeof tenantRef === 'string') return tenantRef;
+  if (tenantRef.subdomain) return tenantRef.subdomain;
+  if (tenantRef.tenant_id) return tenantSubdomain(tenantRef.tenant_id);
+  return null;
 }
 
 /**
  * Generate a QR code as a PNG Buffer.
  * Safe to embed directly into a PDF or return as an image.
  */
-async function generateQRBuffer(docId) {
-  const url = buildVerifyUrl(docId);
+async function generateQRBuffer(docId, tenantRef) {
+  const url = buildVerifyUrl(docId, await resolveSubdomain(tenantRef));
   const buffer = await QRCode.toBuffer(url, {
     type: 'png',
     errorCorrectionLevel: 'H', // High - survives up to 30% damage
@@ -72,8 +116,8 @@ async function generateQRBuffer(docId) {
 /**
  * Generate a QR code as a base64 data URL (useful for HTML embedding).
  */
-async function generateQRDataUrl(docId) {
-  const url = buildVerifyUrl(docId);
+async function generateQRDataUrl(docId, tenantRef) {
+  const url = buildVerifyUrl(docId, await resolveSubdomain(tenantRef));
   const dataUrl = await QRCode.toDataURL(url, {
     errorCorrectionLevel: 'H',
     margin: 2,
@@ -82,4 +126,4 @@ async function generateQRDataUrl(docId) {
   return { dataUrl, url };
 }
 
-module.exports = { generateDocId, buildVerifyUrl, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };
+module.exports = { generateDocId, buildVerifyUrl, tenantBaseUrl, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };

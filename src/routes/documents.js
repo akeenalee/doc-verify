@@ -24,7 +24,7 @@ router.post('/', async (req, res) => {
        expiry_date||null, metadata ? JSON.stringify(metadata) : '{}', tenantId]
     );
 
-    const { dataUrl, url } = await generateQRDataUrl(docId);
+    const { dataUrl, url } = await generateQRDataUrl(docId, req.tenant);
     res.status(201).json({ document: result.rows[0], qr: { dataUrl, url } });
   } catch (err) {
     console.error('Error creating document:', err);
@@ -81,7 +81,7 @@ router.get('/:docId/qr', async (req, res) => {
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Document not found.' });
 
-    const { buffer } = await generateQRBuffer(docId);
+    const { buffer } = await generateQRBuffer(docId, req.tenant);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', `inline; filename="qr-${docId}.png"`);
     res.send(buffer);
