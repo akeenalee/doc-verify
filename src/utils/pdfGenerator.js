@@ -115,7 +115,7 @@ async function generatePDF(docData, outputStream) {
 
 // ── ACADEMIC PDF (original logic unchanged) ─────────────────────────────────
 async function generateAcademicPDF(docData, outputStream, docTypeLower) {
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
 
   const doc = new PDFDocument({
     size: 'A4',
@@ -339,7 +339,7 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
 
   doc.rect(30, H - 46, W - 60, 16).fill(NAVY);
   doc.font('Helvetica').fontSize(7).fillColor('#6699BB')
-     .text(`Powered by UniVerify  ·  verify.akeenalee.com  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`,
+     .text(`Powered by UniVerify  ·  univerify.ng  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`,
        30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 });
 
   doc.rect(30, H - 30, W - 60, 3).fill(GOLD);
@@ -348,7 +348,7 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
 
 // ── GOVERNMENT / MDA PDF ─────────────────────────────────────────────────────
 async function generateGovtPDF(docData, outputStream, docTypeLower) {
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
 
   const cfg = getGovtConfig(docTypeLower) || {
     officeLabel: 'OFFICE OF THE DIRECTOR GENERAL',
@@ -571,7 +571,7 @@ async function generateGovtPDF(docData, outputStream, docTypeLower) {
   // FOOTER BAND
   doc.rect(30, H - 46, W - 60, 16).fill(NAVY);
   doc.font('Helvetica').fontSize(7).fillColor('#6699BB')
-     .text(`Powered by UniVerify  ·  verify.akeenalee.com  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`,
+     .text(`Powered by UniVerify  ·  univerify.ng  ·  Innovation Lens Resources Ltd  ·  ${new Date().getFullYear()}`,
        30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 });
   doc.rect(30, H - 30, W - 60, 3).fill(GOLD);
 
