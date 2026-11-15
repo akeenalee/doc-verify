@@ -3,7 +3,8 @@ const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
-const { verifyDocSignature, signDocId, tenantBaseUrl, tenantSubdomain } = require('../utils/docUtils');
+const { verifyDocSignature, signDocId, tenantBaseUrl, tenantSubdomain,
+        signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
@@ -195,6 +196,11 @@ router.get('/api/search', requireDemoAuth, async (req, res) => {
 // GET /verify/doc-preview/:docId - serves PDF inline for embedding on verify page
 router.get('/doc-preview/:docId', async (req, res) => {
   const { docId } = req.params;
+  // Only serve the full document with a valid, unexpired access token, which
+  // the verify page issues after a student token or a confirmed payment.
+  if (!verifyPreviewToken(docId, req.query.t)) {
+    return res.status(403).send('Access to this document requires verification. Please scan the QR code on the document.');
+  }
   try {
     const result = await pool.query(
       'SELECT * FROM documents WHERE doc_id = $1',
@@ -206,6 +212,7 @@ router.get('/doc-preview/:docId', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cache-Control', 'private, no-store');
     await generatePDF(docData, res);
   } catch (err) {
     console.error('Doc preview error:', err);
@@ -337,6 +344,8 @@ async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', ten
 }
 
 function renderResult(docData, isExpired) {
+  docData = { ...docData,
+    _previewUrl: `/verify/doc-preview/${encodeURIComponent(docData.doc_id)}?t=${signPreviewToken(docData.doc_id)}` };
   if (docData.status === 'revoked') return renderPage('Document Revoked', null, 'revoked', docData);
   if (isExpired) return renderPage('Document Expired', null, 'expired', docData);
   return renderPage('Document Verified', null, 'verified', docData);
@@ -380,7 +389,7 @@ function renderPage(pageTitle, message, state, docData) {
     <div style="margin-top:28px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <p style="font-size:13px;font-weight:600;color:#1a3a5c;margin:0;">Official Document</p>
-        <a href="/verify/doc-preview/${escHtml(docData.doc_id)}"
+        <a href="${escHtml(docData._previewUrl)}"
            download="${escHtml(docData.doc_id)}.pdf"
            style="font-size:12px;color:#1a3a5c;text-decoration:none;border:1px solid #1a3a5c;padding:5px 12px;border-radius:6px;">
           &#8681; Download PDF
@@ -388,7 +397,7 @@ function renderPage(pageTitle, message, state, docData) {
       </div>
       <div id="docFrameWrap" style="border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#f8f9fa;">
         <iframe id="docFrame"
-          src="/verify/doc-preview/${escHtml(docData.doc_id)}"
+          src="${escHtml(docData._previewUrl)}"
           style="width:100%;height:520px;border:none;display:block;"
           title="Official Document">
         </iframe>
@@ -409,7 +418,7 @@ function renderPage(pageTitle, message, state, docData) {
             var lib = window.pdfjsLib;
             if (!lib) return;
             lib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
-            lib.getDocument({ url: '/verify/doc-preview/${encodeURIComponent(docData.doc_id)}', isEvalSupported: false })
+            lib.getDocument({ url: '${docData._previewUrl}', isEvalSupported: false })
               .promise.then(function (pdf) {
                 wrap.remove();
                 pages.style.display = 'block';
