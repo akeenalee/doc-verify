@@ -143,7 +143,8 @@ app.get('/pay.html',     (req, res) => res.sendFile(path.join(__dirname, '../pub
 
 // API routes
 app.use('/verify',        verifyLimiter, verifyRouter);
-app.use('/api/documents', createLimiter, documentsRouter);
+// Staff only: create, list, PDF, QR and revoke all need a dashboard session
+app.use('/api/documents', requireDemoAuth, createLimiter, documentsRouter);
 app.use('/api/tokens',    tokensLimiter, tokensRouter);
 
 // Public tenant info — used by the dashboard to configure the UI

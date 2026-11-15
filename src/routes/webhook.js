@@ -36,8 +36,8 @@ router.post('/paystack', express.raw({ type: 'application/json' }), async (req, 
       );
       await pool.query(
         `UPDATE student_tokens SET token_balance=token_balance+$1, updated_at=NOW()
-         WHERE matric_number=$2 AND institution=$3`,
-        [meta.tokens, meta.matric_number, meta.institution]
+         WHERE matric_number=$2 AND institution=$3 AND tenant_id=$4`,
+        [meta.tokens, meta.matric_number, meta.institution, meta.tenant_id]
       );
       console.log(`Tokens credited: ${meta.tokens} to ${meta.matric_number}`);
 

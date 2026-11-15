@@ -18,6 +18,14 @@ function requireDemoAuth(req, res, next) {
     return res.redirect('/demo-login.html?error=session_expired');
   }
 
+  // A session is bound to the tenant it logged in on
+  if (req.session.tenantId && req.tenant && req.session.tenantId !== req.tenant.id) {
+    if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+      return res.status(403).json({ error: 'This session belongs to another institution.' });
+    }
+    return res.redirect('/demo-login.html');
+  }
+
   req.session.lastDemoActivity = now;
   next();
 }
