@@ -126,4 +126,34 @@ async function generateQRDataUrl(docId, tenantRef) {
   return { dataUrl, url };
 }
 
-module.exports = { generateDocId, buildVerifyUrl, tenantBaseUrl, tenantSubdomain, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };
+/**
+ * Short-lived access token for the full-document preview
+ * (/verify/doc-preview/:docId). Issued only after the verify page has
+ * granted access (student token or confirmed employer payment).
+ * Format: <expiryUnixSeconds>.<hmac32>. The "preview:" prefix keeps it
+ * distinct from the QR signature, which covers the doc ID alone.
+ */
+const PREVIEW_TTL_SECONDS = 30 * 60;
+
+function previewMac(docId, exp) {
+  const secret = process.env.DOC_SECRET || 'dev-secret';
+  return crypto.createHmac('sha256', secret)
+    .update(`preview:${docId}:${exp}`).digest('hex').slice(0, 32);
+}
+
+function signPreviewToken(docId, ttlSeconds = PREVIEW_TTL_SECONDS) {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  return `${exp}.${previewMac(docId, exp)}`;
+}
+
+function verifyPreviewToken(docId, token) {
+  if (!token || typeof token !== 'string') return false;
+  const [expStr, mac] = token.split('.');
+  const exp = parseInt(expStr, 10);
+  if (!exp || !mac || mac.length !== 32) return false;
+  if (exp < Math.floor(Date.now() / 1000)) return false;
+  const expected = previewMac(docId, exp);
+  return crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected));
+}
+
+module.exports = { signPreviewToken, verifyPreviewToken, generateDocId, buildVerifyUrl, tenantBaseUrl, tenantSubdomain, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };
