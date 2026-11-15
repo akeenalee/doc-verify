@@ -6,7 +6,15 @@
       const t = await r.json();
       if (t.primary_colour) document.documentElement.style.setProperty('--brand', t.primary_colour);
       if (t.accent_colour)  document.documentElement.style.setProperty('--accent', t.accent_colour);
-      document.querySelectorAll('[data-tenant-name]').forEach(el => { el.textContent = t.name || 'UniVerify'; });
+      document.querySelectorAll('[data-tenant-name]').forEach(el => {
+        el.textContent = t.name || 'UniVerify';
+        if (t.logo_version && el.parentNode && !el.parentNode.querySelector('img')) {
+          const img = document.createElement('img');
+          img.src = '/brand/logo?v=' + encodeURIComponent(t.logo_version);
+          img.alt = '';
+          el.parentNode.insertBefore(img, el);
+        }
+      });
       document.title = (t.name ? t.name + ' · ' : '') + document.title;
       return t;
     } catch (e) { return {}; }

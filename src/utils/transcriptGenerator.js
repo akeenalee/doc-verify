@@ -1,7 +1,9 @@
 const PDFDocument = require('pdfkit');
 const { generateQRBuffer } = require('./docUtils');
+const { loadBrand, drawSignature, drawLogo, stampSpecimen } = require('./branding');
 
 async function generateTranscript(docData, outputStream) {
+  const brand = docData._brand || await loadBrand(docData);
   const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
 
   const doc = new PDFDocument({
@@ -161,21 +163,29 @@ async function generateTranscript(docData, outputStream) {
     doc.rect(0, 0, W, 3).fill(GOLD);
     doc.rect(0, 97, W, 3).fill(GOLD);
 
+    // Tenant logo on a white tile, name shifted right of it
+    const hasLogo = !!brand.logo;
+    if (hasLogo) {
+      doc.roundedRect(ML - 8, 14, 70, 70, 6).fill(WHITE);
+      drawLogo(doc, brand, ML - 4, 18, 62, 62);
+    }
+    const hx = hasLogo ? ML + 76 : ML, hw = hasLogo ? CW - 196 : CW - 120;
+
     // Institution name
     doc.font('Helvetica-Bold').fontSize(13).fillColor(GOLD)
-       .text(docData.issued_by.toUpperCase(), ML, 18, {
-         width: CW - 120, characterSpacing: 2
+       .text(docData.issued_by.toUpperCase(), hx, 18, {
+         width: hw, characterSpacing: 2
        });
 
     doc.font('Helvetica').fontSize(8).fillColor('#8AADCC')
-       .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', ML, 38, {
-         width: CW - 120, characterSpacing: 1
+       .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', hx, 38, {
+         width: hw, characterSpacing: 1
        });
 
     // Transcript title
     doc.font('Helvetica-Bold').fontSize(16).fillColor(WHITE)
-       .text('OFFICIAL ACADEMIC TRANSCRIPT', ML, 60, {
-         width: CW - 120
+       .text('OFFICIAL ACADEMIC TRANSCRIPT', hx, 60, {
+         width: hw
        });
 
     // QR code on every page - top right of header
@@ -197,12 +207,7 @@ async function generateTranscript(docData, outputStream) {
        .text('UNIVERIFY SECURED', hqrX - 4, hqrY + hqrSize + 14, {
          width: hqrSize + 8, align: 'center', characterSpacing: 0.5
        });
-
-    // Page number
-    doc.font('Helvetica').fontSize(8).fillColor('#8AADCC')
-       .text(`Page ${pageNum} of ${totalPages}`, ML, 82, {
-         width: CW - 120
-       });
+    // Page number is written once all pages exist (see FIX PAGE NUMBERS)
   }
 
   // ── STUDENT INFO BLOCK ────────────────────────────────────────────────────
@@ -405,26 +410,14 @@ async function generateTranscript(docData, outputStream) {
   // ── SIGNATURE AND AUTHENTICATION ──────────────────────────────────────────
   currentY += 20;
 
-  const fs   = require('fs');
-  const path = require('path');
-  const sigDir       = path.join(__dirname, '..', '..', 'signatures');
-  const registrarSig = path.join(sigDir, 'registrar.png');
-  const vcSig        = path.join(sigDir, 'vc.png');
-
   const sig1X = ML;
   const sig2X = ML + CW / 3;
   const sig3X = ML + (CW * 2 / 3);
 
-  if (fs.existsSync(registrarSig)) {
-    doc.image(registrarSig, sig1X, currentY, { width: 110, height: 36 });
-  }
-  if (fs.existsSync(vcSig)) {
-    doc.image(vcSig, sig2X, currentY, { width: 110, height: 36 });
-  }
+  drawSignature(doc, brand, 1, { x: sig1X, y: currentY - 4, width: 130, defaultLabel: 'Registrar', navy: NAVY, gray: MGRAY, dark: DGRAY });
+  drawSignature(doc, brand, 2, { x: sig2X, y: currentY - 4, width: 130, defaultLabel: 'Deputy Registrar (Academics)', navy: NAVY, gray: MGRAY, dark: DGRAY });
 
   [
-    [sig1X, 'Registrar'],
-    [sig2X, 'Deputy Registrar (Academics)'],
     [sig3X, 'Date of Issue'],
   ].forEach(([x, label]) => {
     doc.moveTo(x, currentY + 44).lineTo(x + 130, currentY + 44)
@@ -468,14 +461,14 @@ async function generateTranscript(docData, outputStream) {
   const totalPages = doc.bufferedPageRange().count;
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
-    // Overwrite page number with correct total
-    doc.rect(ML, 79, 120, 14).fill(NAVY);
+    // Under the institution name, clear of the logo tile when there is one
     doc.font('Helvetica').fontSize(8).fillColor('#8AADCC')
-       .text(`Page ${i + 1} of ${totalPages}`, ML, 82, {
+       .text(`Page ${i + 1} of ${totalPages}`, brand.logo ? ML + 76 : ML, 84, {
          width: 120
        });
   }
 
+  stampSpecimen(doc, docData);
   doc.flushPages();
   doc.end();
 }

@@ -22,6 +22,8 @@
     document_superseded: 'Replaced by reissue', document_reissued: 'Reissued document', pdf_downloaded: 'Downloaded PDF',
     search: 'Searched records', user_invited: 'Invited user', user_roles_changed: 'Changed roles',
     user_enabled: 'Enabled user', user_disabled: 'Disabled user', user_access_reset: 'Reset user access',
+    logo_updated: 'Changed logo', logo_removed: 'Removed logo', colours_updated: 'Changed colours',
+    signatory_added: 'Added signatory', signatory_retired: 'Retired signatory', signatory_deleted: 'Deleted signatory',
   };
   const TYPE_LABEL = { Certificate: 'Degree Certificate', Transcript: 'Academic Transcript', Completion: 'Course Completion Certificate',
     Admission: 'Admission Letter', Attestation: 'Attestation Letter' };
@@ -63,6 +65,8 @@
         input = `<textarea id="${id}" name="${esc(f.name)}">${esc(f.value || '')}</textarea>`;
       } else if (f.type === 'checks') {
         input = `<div class="checks">${f.options.map(o => `<label><input type="checkbox" name="${esc(f.name)}" value="${esc(o.value)}"${(f.value || []).includes(o.value) ? ' checked' : ''}/> <span>${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</span></label>`).join('')}</div>`;
+      } else if (f.type === 'file') {
+        input = `<input type="file" id="${id}" name="${esc(f.name)}" accept="${esc(f.accept || '')}"/><div class="img-preview" id="${id}-pv"></div>`;
       } else {
         input = `<input type="${esc(f.type || 'text')}" id="${id}" name="${esc(f.name)}" value="${esc(f.value || '')}"/>`;
       }
@@ -78,18 +82,42 @@
     bg.onclick = e => { if (e.target === bg) close(); };
     document.onkeydown = e => { if (e.key === 'Escape') close(); };
     const first = m.querySelector('input,select,textarea'); if (first) first.focus();
+    fields.filter(f => f.type === 'file').forEach(f => {
+      const inp = $('mf-' + f.name);
+      inp.onchange = async () => {
+        const pv = $('mf-' + f.name + '-pv');
+        pv.innerHTML = inp.files[0] ? `<img alt="" src="${esc(await readFile(inp.files[0]))}"/>` : '';
+      };
+    });
     $('m-form').onsubmit = async e => {
       e.preventDefault();
       if (!onSubmit) return close();
       const fd = new FormData($('m-form'));
       const values = {};
-      fields.forEach(f => { values[f.name] = f.type === 'checks' ? fd.getAll(f.name) : (fd.get(f.name) || '').toString().trim(); });
       const btn = $('m-ok'); btn.disabled = true;
-      try { const keep = await onSubmit(values); if (keep !== true) close(); }
+      try {
+        for (const f of fields) {
+          if (f.type === 'checks') values[f.name] = fd.getAll(f.name);
+          else if (f.type === 'file') { const file = $('mf-' + f.name).files[0]; values[f.name] = file ? await readFile(file, f.maxKb) : ''; }
+          else values[f.name] = (fd.get(f.name) || '').toString().trim();
+        }
+        const keep = await onSubmit(values); if (keep !== true) close(); }
       catch (err) { const a = $('m-msg'); a.textContent = err.message; a.className = 'alert show err'; }
       finally { btn.disabled = false; }
     };
     return { close };
+  }
+
+  // File to a data: URL, refusing anything over maxKb before it's uploaded
+  function readFile(file, maxKb) {
+    return new Promise((resolve, reject) => {
+      if (maxKb && file.size > maxKb * 1024) return reject(new Error(`That file is ${Math.ceil(file.size / 1024)} KB. The limit is ${maxKb} KB.`));
+      if (!/^image\/(png|jpeg)$/.test(file.type)) return reject(new Error('Use a PNG or JPEG file.'));
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('Could not read that file.'));
+      r.readAsDataURL(file);
+    });
   }
 
   function linkModal(title, lead, link) {
@@ -129,6 +157,8 @@
     { path: '/activity',  label: 'Activity log', show: () => has('owner', 'auditor') },
     { group: 'Administration', show: () => has('owner') },
     { path: '/users',     label: 'Users and roles', show: () => has('owner') },
+    { path: '/branding',  label: 'Branding', show: () => has('owner') },
+    { path: '/signatories', label: 'Signatories', show: () => has('owner') },
   ];
   function renderNav(active) {
     $('nav').innerHTML = NAV.filter(i => !i.show || i.show()).map(i => i.group
@@ -460,6 +490,141 @@
     });
   };
 
+  // ── Branding (Owner) ────────────────────────────────────────────────────
+  // Logo is served same-origin from /brand/logo; external URLs are blocked by the CSP
+  function setSideLogo(version) {
+    $('brand-logo').innerHTML = version
+      ? `<img src="/brand/logo?v=${encodeURIComponent(version)}" alt="${esc(S.tenant.name)} logo"/>`
+      : `<div class="mono">${esc(S.tenant.short_code || '')}</div>`;
+  }
+
+  const previewControls = (types, id) => `<div class="preview-row">
+      <div class="field"><label for="${id}-t">Document type</label><select id="${id}-t">${types.map(t => `<option value="${esc(t)}">${esc(typeLabel(t))}</option>`).join('')}</select></div>
+      <div class="field"><label for="${id}-d">As issued on</label><input type="date" id="${id}-d" value="${new Date().toISOString().slice(0, 10)}"/></div>
+      <button class="btn secondary" type="button" id="${id}-go">Open specimen PDF</button></div>`;
+  const wirePreview = id => { $(id + '-go').onclick = () => window.open(`/app-api/settings/preview.pdf?${qs({ type: $(id + '-t').value, date: $(id + '-d').value })}`, '_blank'); };
+
+  V['/branding'] = async (el) => {
+    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can change branding.</div>'; return; }
+    const b = await api('/settings/branding');
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Branding</h1><div class="sub">How ${esc(b.name)} appears on documents and in this workspace</div></div></div>
+      <div class="panel"><h2>Logo</h2>
+        <p class="muted">Printed in the header of every certificate and transcript, and shown on the sign-in page. PNG or JPEG, up to ${esc(b.limits.logo_kb)} KB. A square or wide logo on a white or transparent background works best.</p>
+        <div class="swatch-row">
+          <div class="logo-box">${b.logo ? `<img src="/brand/logo?v=${esc(b.logo.version)}" alt="Current logo"/>` : '<span class="muted">No logo</span>'}</div>
+          <div><button class="btn" id="logo-up">${b.logo ? 'Replace logo' : 'Upload logo'}</button>
+            ${b.logo ? ' <button class="btn secondary" id="logo-rm">Remove</button>' : ''}
+            ${b.logo ? `<div class="muted" style="font-size:12px;margin-top:8px">Updated ${esc(fmtTime(b.logo.updated_at))} · ${esc(Math.ceil(b.logo.bytes / 1024))} KB</div>` : ''}</div>
+        </div></div>
+      <div class="panel"><h2>Colours</h2>
+        <p class="muted">Used across this workspace and the sign-in pages. Document PDFs keep their standard colours so they always print clearly.</p>
+        <form id="col-f" class="swatch-row">
+          <div class="field"><label for="c-p">Main colour</label><input type="color" id="c-p" name="primary_colour" value="${esc(b.primary_colour || '#1A3A5C')}"/></div>
+          <div class="field"><label for="c-a">Accent colour</label><input type="color" id="c-a" name="accent_colour" value="${esc(b.accent_colour || '#C9A84C')}"/></div>
+          <button class="btn" type="submit">Save colours</button></form>
+        <div class="alert" id="col-msg" style="margin-top:10px"></div></div>
+      <div class="panel"><h2>Preview</h2>
+        <p class="muted">Renders a specimen with your current logo and signatories. It's marked SPECIMEN and isn't saved.</p>
+        ${previewControls(S.meta.doc_types, 'pv')}</div>`;
+    wirePreview('pv');
+    $('logo-up').onclick = () => modal({
+      title: b.logo ? 'Replace logo' : 'Upload logo', submit: 'Save logo',
+      lead: 'New documents use it straight away. Existing PDFs show it the next time they are downloaded.',
+      fields: [{ name: 'image', label: 'Logo file', type: 'file', accept: 'image/png,image/jpeg', maxKb: b.limits.logo_kb }],
+      onSubmit: async v => {
+        if (!v.image) throw new Error('Choose a file.');
+        await api('/settings/logo', { method: 'POST', body: { image: v.image } });
+        const me = await api('/auth/me'); S.tenant = me.tenant; setSideLogo(S.tenant.logo_version);
+        toast('Logo saved.'); render();
+      },
+    });
+    if ($('logo-rm')) $('logo-rm').onclick = () => modal({
+      title: 'Remove logo', submit: 'Remove', danger: true,
+      lead: 'Documents go back to the text-only header.',
+      onSubmit: async () => { await api('/settings/logo', { method: 'DELETE' }); setSideLogo(null); toast('Logo removed.'); render(); },
+    });
+    $('col-f').onsubmit = async e => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(e.target));
+      try {
+        await api('/settings/colours', { method: 'PATCH', body: v });
+        const root = document.documentElement.style;
+        root.setProperty('--brand', v.primary_colour); root.setProperty('--accent', v.accent_colour);
+        $('col-msg').className = 'alert';
+        toast('Colours saved.');
+      } catch (err) { const a = $('col-msg'); a.textContent = err.message; a.className = 'alert show err'; }
+    };
+  };
+
+  const SIG_STATUS = { current: 'In use', scheduled: 'Starts later', retired: 'Retired' };
+  V['/signatories'] = async (el) => {
+    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can manage signatories.</div>'; return; }
+    const d = await api('/settings/signatories');
+    const kb = d.limits.signature_kb;
+    const scope = s => s.doc_types.length ? s.doc_types.map(typeLabel).join(', ') : 'All document types';
+    const slotPanel = slot => {
+      const rows = d.signatories.filter(s => s.slot === slot);
+      return `<div class="panel"><div class="slot-head"><h2>${esc(d.slots[slot])}</h2>
+          <button class="btn sm" data-add="${slot}">Add signatory</button></div>
+        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Signature</th><th>Name and title</th><th>Applies to</th><th>Dates</th><th>Status</th><th></th></tr></thead><tbody>
+          ${rows.map(s => `<tr><td><img class="sig-img" src="/app-api/settings/signatories/${esc(s.id)}/image" alt="Signature of ${esc(s.full_name)}"/></td>
+            <td><strong>${esc(s.full_name)}</strong><div class="muted">${esc(s.title)}</div></td>
+            <td>${esc(scope(s))}</td>
+            <td>${esc(fmtDate(s.effective_from))} to ${esc(s.effective_to ? fmtDate(s.effective_to) : 'open')}</td>
+            <td>${badge(s.status, SIG_STATUS[s.status])}</td>
+            <td style="white-space:nowrap">${s.status === 'scheduled'
+              ? `<button class="btn danger sm" data-del="${esc(s.id)}">Delete</button>`
+              : s.status === 'current' ? `<button class="btn secondary sm" data-retire="${esc(s.id)}">Retire</button>` : ''}</td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="muted">No signatory yet. Documents show an empty signature line here.</p>'}</div>`;
+    };
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Signatories</h1><div class="sub">Whose signature prints on each document</div></div></div>
+      <div class="notice">Each document carries the signature that was in force on its issue date, so a 2025 certificate keeps the 2025 signature even when it's downloaded again later. When an office holder changes, add the new person with their start date; they take over from that day. Signatures can't be edited, only retired, so the record of who signed what stays intact.</div>
+      ${slotPanel(1)}${slotPanel(2)}
+      <div class="panel"><h2>Check a document</h2><p class="muted">See which signatures print on a given type and date.</p>${previewControls(S.meta.doc_types, 'sp')}</div>`;
+    wirePreview('sp');
+    const byId = id => d.signatories.find(s => s.id === id);
+    el.querySelectorAll('[data-add]').forEach(btn => btn.onclick = () => {
+      const slot = Number(btn.dataset.add);
+      modal({
+        title: 'Add signatory: ' + d.slots[slot], submit: 'Add signatory',
+        lead: 'Use a clear scan of the signature on white or transparent background. Every change is recorded in the activity log.',
+        fields: [
+          { name: 'full_name', label: 'Full name, as printed', hint: 'For example Dr. A. B. Adeyemi' },
+          { name: 'title', label: 'Title', value: slot === 1 ? 'Registrar' : 'Vice-Chancellor' },
+          { name: 'image', label: `Signature image (PNG or JPEG, up to ${kb} KB)`, type: 'file', accept: 'image/png,image/jpeg', maxKb: kb },
+          { name: 'effective_from', label: 'Signs documents issued from', type: 'date', value: new Date().toISOString().slice(0, 10) },
+          { name: 'effective_to', label: 'Until (optional)', type: 'date', hint: 'Leave empty if there is no end date yet.' },
+          { name: 'doc_types', label: 'Document types', type: 'checks', hint: 'Tick none to sign every type.',
+            options: d.doc_types.map(t => ({ value: t, label: typeLabel(t) })), value: [] },
+        ],
+        onSubmit: async v => {
+          if (!v.image) throw new Error('Choose the signature image.');
+          await api('/settings/signatories', { method: 'POST', body: { ...v, slot } });
+          toast('Signatory added.'); render();
+        },
+      });
+    });
+    el.querySelectorAll('[data-retire]').forEach(btn => btn.onclick = () => {
+      const s = byId(btn.dataset.retire);
+      modal({
+        title: 'Retire ' + s.full_name, submit: 'Retire', danger: true,
+        lead: 'Documents issued after the last day won\'t carry this signature. Documents issued before it keep it.',
+        fields: [{ name: 'effective_to', label: 'Last day', type: 'date', value: new Date().toISOString().slice(0, 10) }],
+        onSubmit: async v => { await api('/settings/signatories/' + s.id + '/retire', { method: 'POST', body: v }); toast('Signatory retired.'); render(); },
+      });
+    });
+    el.querySelectorAll('[data-del]').forEach(btn => btn.onclick = () => {
+      const s = byId(btn.dataset.del);
+      modal({
+        title: 'Delete ' + s.full_name, submit: 'Delete', danger: true,
+        lead: 'This signature hasn\'t started yet, so no document uses it.',
+        onSubmit: async () => { await api('/settings/signatories/' + s.id, { method: 'DELETE' }); toast('Signatory deleted.'); render(); },
+      });
+    });
+  };
+
   // ── Router ──────────────────────────────────────────────────────────────
   async function render() {
     const { path, q } = routeParams();
@@ -493,8 +658,7 @@
     if (S.tenant.accent_colour) root.setProperty('--accent', S.tenant.accent_colour);
     document.title = S.tenant.name + ' · Records workspace';
     $('brand-name').textContent = S.tenant.name;
-    // Logo upload arrives in Phase 2; external logo URLs are blocked by the CSP
-    $('brand-logo').innerHTML = `<div class="mono">${esc(S.tenant.short_code || '')}</div>`;
+    setSideLogo(S.tenant.logo_version);
     $('acct-name').textContent = S.user.full_name || S.user.email;
     $('acct-roles').textContent = S.user.roles.map(r => ROLE_LABEL[r] || r).join(', ');
     $('shell').style.display = '';

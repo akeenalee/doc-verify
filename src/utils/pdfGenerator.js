@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { loadBrand, drawSignature, drawLogo, stampSpecimen } = require('./branding');
 const { generateQRBuffer, buildVerifyUrl } = require('./docUtils');
 const { generateTranscript } = require('./transcriptGenerator');
 
@@ -97,6 +98,8 @@ function getGovtConfig(docTypeLower) {
 }
 
 async function generatePDF(docData, outputStream) {
+  // Tenant logo and the signatories valid on the issue date
+  docData = { ...docData, _brand: docData._brand || await loadBrand(docData) };
   const docTypeLower = (docData.doc_type || '').toLowerCase();
 
   // Route transcripts
@@ -161,12 +164,19 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
   doc.rect(30, 30, W - 60, 3).fill(GOLD);
   doc.rect(30, 117, W - 60, 3).fill(GOLD);
 
+  // Tenant logo on a white tile at the left of the band; the name moves right
+  const hasLogo = !!docData._brand.logo;
+  if (hasLogo) {
+    doc.roundedRect(40, 40, 70, 70, 6).fill(WHITE);
+    drawLogo(doc, docData._brand, 44, 44, 62, 62);
+  }
+  const hx = hasLogo ? 120 : 30, hw = hasLogo ? W - 260 : W - 60;
   doc.font('Helvetica-Bold').fontSize(11).fillColor(GOLD)
-     .text(docData.issued_by.toUpperCase(), 30, 48, { width: W - 60, align: 'center', characterSpacing: 3 });
+     .text(docData.issued_by.toUpperCase(), hx, 48, { width: hw, align: 'center', characterSpacing: hasLogo ? 2 : 3 });
 
   doc.font('Helvetica').fontSize(8.5).fillColor('#8AADCC')
-     .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', 30, 72, {
-       width: W - 60, align: 'center', characterSpacing: 1.5
+     .text('OFFICE OF THE REGISTRAR  ·  OFFICIAL ACADEMIC RECORD', hx, 72, {
+       width: hw, align: 'center', characterSpacing: hasLogo ? 1 : 1.5
      });
 
   doc.roundedRect(W - 130, 36, 96, 22, 4).fill('#0D2D4A');
@@ -306,23 +316,14 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
   const sig2X = W / 2 - 60;
   const sig3X = W - 200;
 
-  const fs   = require('fs');
-  const path = require('path');
-  const sigDir       = path.join(__dirname, '..', '..', 'signatures');
-  const registrarSig = path.join(sigDir, 'registrar.png');
-  const vcSig        = path.join(sigDir, 'vc.png');
-
-  if (fs.existsSync(registrarSig)) doc.image(registrarSig, sig1X, sigY + 4, { width: 110, height: 36 });
-  if (fs.existsSync(vcSig))        doc.image(vcSig, sig2X, sigY + 4, { width: 110, height: 36 });
-
   function sigLine(x, label) {
     doc.moveTo(x, sigY + 44).lineTo(x + 120, sigY + 44).strokeColor(NAVY).lineWidth(0.6).stroke();
     doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY)
        .text(label.toUpperCase(), x, sigY + 50, { width: 120, align: 'center', characterSpacing: 0.8 });
   }
 
-  sigLine(sig1X, 'Registrar');
-  sigLine(sig2X, 'Vice Chancellor');
+  drawSignature(doc, docData._brand, 1, { x: sig1X, y: sigY, width: 120, defaultLabel: 'Registrar', navy: NAVY, gray: MGRAY, dark: DGRAY });
+  drawSignature(doc, docData._brand, 2, { x: sig2X, y: sigY, width: 120, defaultLabel: 'Vice Chancellor', navy: NAVY, gray: MGRAY, dark: DGRAY });
   sigLine(sig3X, 'Date');
   doc.font('Helvetica').fontSize(9).fillColor(DGRAY).text(issueDate, sig3X, sigY + 30, { width: 120, align: 'center' });
 
@@ -343,6 +344,7 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
        30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 });
 
   doc.rect(30, H - 30, W - 60, 3).fill(GOLD);
+  stampSpecimen(doc, docData);
   doc.end();
 }
 
@@ -403,11 +405,12 @@ async function generateGovtPDF(docData, outputStream, docTypeLower) {
   doc.rect(30, 30, W - 60, 3).fill(GOLD);
   doc.rect(30, 122, W - 60, 3).fill(GOLD);
 
-  // Nigerian coat of arms placeholder — green circle with eagle icon
+  // Tenant logo, or a plain green seal when there's none (Helvetica can't draw emoji)
   doc.circle(W / 2, 65, 22).fill(WHITE);
-  doc.circle(W / 2, 65, 20).fill('#1A6B3A');
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(WHITE)
-     .text('🦅', W / 2 - 10, 57, { width: 20, align: 'center' });
+  if (!drawLogo(doc, docData._brand, W / 2 - 17, 48, 34, 34)) {
+    doc.circle(W / 2, 65, 20).fill('#1A6B3A');
+    doc.circle(W / 2, 65, 14).lineWidth(1).strokeColor(WHITE).stroke();
+  }
 
   // Institution name
   doc.font('Helvetica-Bold').fontSize(10).fillColor(GOLD)
@@ -524,23 +527,14 @@ async function generateGovtPDF(docData, outputStream, docTypeLower) {
   const sig2X = W / 2 - 60;
   const sig3X = W - 200;
 
-  const fs   = require('fs');
-  const path = require('path');
-  const sigDir    = path.join(__dirname, '..', '..', 'signatures');
-  const sig1File  = path.join(sigDir, 'registrar.png');
-  const sig2File  = path.join(sigDir, 'vc.png');
-
-  if (fs.existsSync(sig1File)) doc.image(sig1File, sig1X, sigY + 4, { width: 110, height: 36 });
-  if (fs.existsSync(sig2File)) doc.image(sig2File, sig2X, sigY + 4, { width: 110, height: 36 });
-
   function sigLine(x, label) {
     doc.moveTo(x, sigY + 44).lineTo(x + 130, sigY + 44).strokeColor(NAVY).lineWidth(0.6).stroke();
     doc.font('Helvetica').fontSize(7.5).fillColor(MGRAY)
        .text(label.toUpperCase(), x, sigY + 50, { width: 130, align: 'center', characterSpacing: 0.8 });
   }
 
-  sigLine(sig1X, cfg.sigLine1);
-  sigLine(sig2X, cfg.sigLine2);
+  drawSignature(doc, docData._brand, 1, { x: sig1X, y: sigY, width: 130, defaultLabel: cfg.sigLine1, navy: NAVY, gray: MGRAY, dark: DGRAY });
+  drawSignature(doc, docData._brand, 2, { x: sig2X, y: sigY, width: 130, defaultLabel: cfg.sigLine2, navy: NAVY, gray: MGRAY, dark: DGRAY });
   sigLine(sig3X, 'Date of Issue');
   doc.font('Helvetica').fontSize(9).fillColor(DGRAY)
      .text(issueDate, sig3X, sigY + 30, { width: 130, align: 'center' });
@@ -575,6 +569,7 @@ async function generateGovtPDF(docData, outputStream, docTypeLower) {
        30, H - 42, { width: W - 60, align: 'center', characterSpacing: 0.5 });
   doc.rect(30, H - 30, W - 60, 3).fill(GOLD);
 
+  stampSpecimen(doc, docData);
   doc.end();
 }
 
