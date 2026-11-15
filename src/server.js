@@ -61,11 +61,12 @@ app.set('trust proxy', 1);
 // Webhook MUST be before express.json()
 app.use('/api/webhook', webhookRouter);
 
-// Logo and signature uploads arrive as base64 JSON, so only the settings API
-// gets a larger body limit; everything else keeps the 100 kB default
+// Logo and signature uploads (base64) and bulk CSV uploads get a larger body
+// limit; everything else keeps the 100 kB default
 const jsonSmall = express.json();
-const jsonLarge = express.json({ limit: '1mb' });
-app.use((req, res, next) => (req.path.startsWith('/app-api/settings/') ? jsonLarge : jsonSmall)(req, res, next));
+const jsonLarge = express.json({ limit: '2mb' });
+const largeBody = req => req.path.startsWith('/app-api/settings/') || req.path === '/app-api/batches' || req.path === '/app-api/batches/';
+app.use((req, res, next) => (largeBody(req) ? jsonLarge : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: false }));
 
 // Session store
@@ -110,6 +111,7 @@ app.use('/admin-api', adminRouter);
 // Staff app API (per-tenant staff accounts, roles and TOTP)
 app.use('/app-api/auth', staffAuthRouter);
 app.use('/app-api/settings', require('./routes/staffSettings'));
+app.use('/app-api/batches', require('./routes/staffBatches'));
 app.use('/app-api', staffAppRouter);
 
 // Static files - skip protected files so they hit auth middleware below
