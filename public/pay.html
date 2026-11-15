@@ -48,8 +48,8 @@
   <div class="error-banner" id="error-banner"></div>
 
   <div class="doc-box" id="doc-box" style="display:none">
-    <div class="row"><span>Document</span><span id="doc-title">-</span></div>
-    <div class="row"><span>Issued to</span><span id="doc-issued">-</span></div>
+    <div class="row"><span>Document type</span><span id="doc-title">-</span></div>
+    <div class="row"><span>Issued by</span><span id="doc-issued">-</span></div>
     <div class="row"><span>Document ID</span><span id="doc-id" style="font-family:monospace;font-size:11px">-</span></div>
   </div>
 
@@ -75,8 +75,9 @@
 <script>
 const params   = new URLSearchParams(window.location.search);
 const docId    = params.get('doc');
-const title    = params.get('title');
-const issuedTo = params.get('issued_to');
+// Holder details stay hidden until payment; only the type and issuer show here
+const title    = params.get('type');
+const issuedTo = params.get('issued_by');
 const error    = params.get('error');
 
 if (error) {

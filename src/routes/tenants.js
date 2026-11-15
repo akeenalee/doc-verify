@@ -9,6 +9,7 @@ const router  = express.Router();
 const crypto  = require('crypto');
 const pool    = require('../db/pool');
 const { clearTenantCache } = require('../middleware/tenantResolver');
+const { createInvite } = require('../utils/staffInvite');
 
 const ROOT_TENANT = (process.env.ROOT_TENANT_SUBDOMAIN || 'demo').toLowerCase();
 const ROOT_DOMAIN = process.env.TENANT_ROOT_DOMAIN || 'univerify.ng';
@@ -260,6 +261,32 @@ router.patch('/:id/active', async (req, res) => {
   } catch (e) {
     console.error('Toggle tenant error:', e.message);
     res.status(500).json({ error: 'Failed to update institution.' });
+  }
+});
+
+// POST /admin-api/tenants/:id/owner-invite  { email, full_name }
+// Invite an institution's first Owner to the staff app. Works for the root
+// tenant too, so the demo workspace can be tested. Further staff are invited
+// by that Owner from inside the app.
+router.post('/:id/owner-invite', async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(404).json({ error: 'Institution not found.' });
+  try {
+    const t = await pool.query('SELECT id, name, subdomain, short_code FROM tenants WHERE id=$1', [req.params.id]);
+    if (!t.rows.length) return res.status(404).json({ error: 'Institution not found.' });
+    const tenant = t.rows[0];
+    const out = await createInvite(tenant, tenantUrl(req, tenant.subdomain), {
+      email: req.body.email, full_name: req.body.full_name, roles: ['owner'], invitedBy: 'Innovation Lens',
+    });
+    await pool.query(
+      `INSERT INTO activity_log (tenant_id, actor, action, target_type, target_id, detail)
+       VALUES ($1, 'Innovation Lens', 'user_invited', 'user', $2, $3)`,
+      [tenant.id, out.user.email, JSON.stringify({ roles: ['owner'] })]
+    );
+    res.status(201).json({ link: out.link, emailed: out.emailed, email: out.user.email });
+  } catch (e) {
+    if (e && e.status) return res.status(e.status).json({ error: e.message });
+    console.error('Owner invite error:', e);
+    res.status(500).json({ error: 'Failed to invite owner.' });
   }
 });
 
