@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Staff sign in</title>
+  <link rel="stylesheet" href="/app/app.css"/>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="t-name" data-tenant-name>UniVerify</div>
+      <div class="t-sub">Records workspace · UniVerify</div>
+    </div>
+    <div class="auth-body">
+      <div id="msg" class="alert"></div>
+
+      <form id="step-password" autocomplete="on">
+        <h1>Sign in</h1>
+        <p class="lead">Use the email your institution registered for you.</p>
+        <div class="field"><label for="email">Email</label>
+          <input type="email" id="email" autocomplete="username" required/></div>
+        <div class="field"><label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" required/></div>
+        <button class="btn block" id="btn-password" type="submit">Continue</button>
+        <p class="muted" style="font-size:12px;margin:14px 0 0">Forgot your password or lost your phone? Ask your institution's UniVerify Owner to reset your access.</p>
+      </form>
+
+      <form id="step-code" style="display:none" autocomplete="off">
+        <h1>Two-factor code</h1>
+        <p class="lead">Enter the 6-digit code from your authenticator app.</p>
+        <div class="field"><input class="code-input" id="code" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" autocomplete="one-time-code"/></div>
+        <button class="btn block" id="btn-code" type="submit">Sign in</button>
+        <p style="margin:14px 0 0;font-size:13px"><button type="button" class="link-btn" id="use-recovery">Use a recovery code instead</button></p>
+      </form>
+
+      <form id="step-recovery" style="display:none" autocomplete="off">
+        <h1>Recovery code</h1>
+        <p class="lead">Each recovery code works once. Ask your Owner for new codes when you run low.</p>
+        <div class="field"><input type="text" id="recovery" placeholder="XXXXX-XXXXX" class="mono"/></div>
+        <button class="btn block" type="submit">Sign in</button>
+        <p style="margin:14px 0 0;font-size:13px"><button type="button" class="link-btn" id="use-code">Use an authenticator code</button></p>
+      </form>
+    </div>
+  </div>
+</div>
+<script src="/app/brand.js"></script>
+<script>
+(function () {
+  uvBrand();
+  const msg = document.getElementById('msg');
+  const steps = { password: 'step-password', code: 'step-code', recovery: 'step-recovery' };
+  function show(step) {
+    Object.values(steps).forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById(steps[step]).style.display = 'block';
+    const focus = { password: 'email', code: 'code', recovery: 'recovery' }[step];
+    setTimeout(() => document.getElementById(focus).focus(), 30);
+  }
+  async function finish(body, btn) {
+    msg.className = 'alert';
+    if (btn) btn.disabled = true;
+    try {
+      const d = await uvPost('/app-api/auth/verify', body);
+      if (d.recovery_codes_left !== undefined && d.recovery_codes_left <= 3) {
+        sessionStorage.setItem('uv-recovery-low', String(d.recovery_codes_left));
+      }
+      location.href = '/app/';
+    } catch (e) {
+      uvShow(msg, e.message);
+      if (e.data && e.data.restart) show('password');
+    } finally { if (btn) btn.disabled = false; }
+  }
+  document.getElementById('step-password').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const btn = document.getElementById('btn-password');
+    msg.className = 'alert'; btn.disabled = true;
+    try {
+      await uvPost('/app-api/auth/login', {
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      });
+      show('code');
+    } catch (e) { uvShow(msg, e.message); }
+    finally { btn.disabled = false; }
+  });
+  document.getElementById('step-code').addEventListener('submit', ev => {
+    ev.preventDefault();
+    finish({ code: document.getElementById('code').value.replace(/\s/g, '') }, document.getElementById('btn-code'));
+  });
+  document.getElementById('step-recovery').addEventListener('submit', ev => {
+    ev.preventDefault();
+    finish({ recovery_code: document.getElementById('recovery').value });
+  });
+  document.getElementById('use-recovery').addEventListener('click', () => show('recovery'));
+  document.getElementById('use-code').addEventListener('click', () => show('code'));
+  const p = new URLSearchParams(location.search);
+  if (p.get('expired')) uvShow(msg, 'Your session ended. Please sign in again.', 'info');
+})();
+</script>
+</body>
+</html>

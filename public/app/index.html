@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Records workspace</title>
+  <link rel="stylesheet" href="/app/app.css"/>
+</head>
+<body>
+<div class="shell" id="shell" style="display:none">
+  <aside class="side" id="side">
+    <div class="brand">
+      <div id="brand-logo"></div>
+      <div><div class="n" id="brand-name"></div><div class="s">Records workspace</div></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="btn secondary sm menu-btn" id="menu-btn" type="button" aria-label="Open menu">Menu</button>
+      <form id="top-search" role="search">
+        <input type="search" id="top-q" placeholder="Search name, matric number or document ID" aria-label="Search records"/>
+      </form>
+      <div class="spacer"></div>
+      <div class="acct">
+        <button class="acct-btn" id="acct-btn" type="button">
+          <span class="who" id="acct-name"></span><span class="roles" id="acct-roles"></span>
+        </button>
+        <div class="acct-menu" id="acct-menu">
+          <button type="button" id="m-password">Change password</button>
+          <button type="button" id="m-signout">Sign out</button>
+        </div>
+      </div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="/app/app.js"></script>
+</body>
+</html>
