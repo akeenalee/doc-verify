@@ -3,7 +3,8 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { hashPin, generateSalt, requireStudentAuth } = require('../middleware/studentAuth');
 const { loginLimiter } = require('../middleware/rateLimiter');
-const { initializeTransaction, BASE_URL } = require('../utils/paystack');
+const { initializeTransaction } = require('../utils/paystack');
+const { tenantBaseUrl } = require('../utils/docUtils');
 
 const BUNDLES = [
   { id:1, label:'1 verification',   tokens:1,  amountKobo:100000 },
@@ -163,7 +164,7 @@ router.post('/buy', requireStudentAuth, async (req, res) => {
         bundle_id: bundle.id, tokens: bundle.tokens,
         student_id: req.session.studentId, tenant_id: tenantId,
       },
-      callbackUrl: `${BASE_URL()}/api/tokens/verify-payment`,
+      callbackUrl: `${tenantBaseUrl(req.tenant.subdomain)}/api/tokens/verify-payment`,
     });
 
     await pool.query(

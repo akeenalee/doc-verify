@@ -126,4 +126,4 @@ async function generateQRDataUrl(docId, tenantRef) {
   return { dataUrl, url };
 }
 
-module.exports = { generateDocId, buildVerifyUrl, tenantBaseUrl, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };
+module.exports = { generateDocId, buildVerifyUrl, tenantBaseUrl, tenantSubdomain, signDocId, verifyDocSignature, generateQRBuffer, generateQRDataUrl };
