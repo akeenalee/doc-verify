@@ -126,6 +126,34 @@ router.patch('/colours', OWNER, async (req, res) => {
   } catch (e) { sendErr(res, e, 'Failed to save colours.'); }
 });
 
+// ── Workflow ────────────────────────────────────────────────────────────────
+// Approval before a bulk batch is issued. Off by default.
+router.get('/approval', OWNER, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT approval_required FROM tenants WHERE id = $1', [req.tenant.id]);
+    res.json({ approval_required: !!r.rows[0].approval_required });
+  } catch (e) { sendErr(res, e, 'Failed to load setting. Has migration 006 been run?'); }
+});
+
+router.patch('/approval', OWNER, async (req, res) => {
+  try {
+    if (typeof req.body.approval_required !== 'boolean') throw bad(400, 'approval_required must be true or false.');
+    const on = req.body.approval_required;
+    if (on) {
+      // Nobody approves their own batch, so it takes two active people, one of whom can approve
+      const r = await pool.query(
+        `SELECT COUNT(*) AS users,
+                COUNT(*) FILTER (WHERE roles && ARRAY['owner','approver']::text[]) AS deciders
+         FROM tenant_users WHERE tenant_id = $1 AND status = 'active'`, [req.tenant.id]);
+      if (parseInt(r.rows[0].users) < 2 || parseInt(r.rows[0].deciders) < 1)
+        throw bad(409, 'Approval needs at least two active users, one of them an Owner or Approver, because nobody can approve their own batch. Invite someone first.');
+    }
+    await pool.query('UPDATE tenants SET approval_required = $2 WHERE id = $1', [req.tenant.id, on]);
+    await logActivity(req, { action: on ? 'approval_enabled' : 'approval_disabled', targetType: 'tenant', targetId: req.tenant.subdomain });
+    res.json({ approval_required: on });
+  } catch (e) { sendErr(res, e, 'Failed to save setting.'); }
+});
+
 // ── Signatories ─────────────────────────────────────────────────────────────
 router.get('/signatories', OWNER, async (req, res) => {
   try {

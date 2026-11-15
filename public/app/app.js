@@ -24,6 +24,9 @@
     user_enabled: 'Enabled user', user_disabled: 'Disabled user', user_access_reset: 'Reset user access',
     logo_updated: 'Changed logo', logo_removed: 'Removed logo', colours_updated: 'Changed colours',
     signatory_added: 'Added signatory', signatory_retired: 'Retired signatory', signatory_deleted: 'Deleted signatory',
+    batch_uploaded: 'Uploaded batch', batch_submitted: 'Submitted batch for approval', batch_approved: 'Approved batch',
+    batch_rejected: 'Rejected batch', batch_cancelled: 'Cancelled batch', batch_issued: 'Issued batch',
+    batch_pdfs_downloaded: 'Downloaded batch PDFs', approval_enabled: 'Turned batch approval on', approval_disabled: 'Turned batch approval off',
   };
   const TYPE_LABEL = { Certificate: 'Degree Certificate', Transcript: 'Academic Transcript', Completion: 'Course Completion Certificate',
     Admission: 'Admission Letter', Attestation: 'Attestation Letter' };
@@ -66,7 +69,7 @@
       } else if (f.type === 'checks') {
         input = `<div class="checks">${f.options.map(o => `<label><input type="checkbox" name="${esc(f.name)}" value="${esc(o.value)}"${(f.value || []).includes(o.value) ? ' checked' : ''}/> <span>${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</span></label>`).join('')}</div>`;
       } else if (f.type === 'file') {
-        input = `<input type="file" id="${id}" name="${esc(f.name)}" accept="${esc(f.accept || '')}"/><div class="img-preview" id="${id}-pv"></div>`;
+        input = `<input type="file" id="${id}" name="${esc(f.name)}" accept="${esc(f.accept || '')}"/>${f.asText ? '' : `<div class="img-preview" id="${id}-pv"></div>`}`;
       } else {
         input = `<input type="${esc(f.type || 'text')}" id="${id}" name="${esc(f.name)}" value="${esc(f.value || '')}"/>`;
       }
@@ -82,7 +85,7 @@
     bg.onclick = e => { if (e.target === bg) close(); };
     document.onkeydown = e => { if (e.key === 'Escape') close(); };
     const first = m.querySelector('input,select,textarea'); if (first) first.focus();
-    fields.filter(f => f.type === 'file').forEach(f => {
+    fields.filter(f => f.type === 'file' && !f.asText).forEach(f => {
       const inp = $('mf-' + f.name);
       inp.onchange = async () => {
         const pv = $('mf-' + f.name + '-pv');
@@ -98,7 +101,11 @@
       try {
         for (const f of fields) {
           if (f.type === 'checks') values[f.name] = fd.getAll(f.name);
-          else if (f.type === 'file') { const file = $('mf-' + f.name).files[0]; values[f.name] = file ? await readFile(file, f.maxKb) : ''; }
+          else if (f.type === 'file') {
+            const file = $('mf-' + f.name).files[0];
+            values[f.name] = file ? await (f.asText ? readText(file, f.maxKb) : readFile(file, f.maxKb)) : '';
+            values[f.name + '_name'] = file ? file.name : '';
+          }
           else values[f.name] = (fd.get(f.name) || '').toString().trim();
         }
         const keep = await onSubmit(values); if (keep !== true) close(); }
@@ -117,6 +124,17 @@
       r.onload = () => resolve(r.result);
       r.onerror = () => reject(new Error('Could not read that file.'));
       r.readAsDataURL(file);
+    });
+  }
+
+  function readText(file, maxKb) {
+    return new Promise((resolve, reject) => {
+      if (maxKb && file.size > maxKb * 1024) return reject(new Error(`That file is ${Math.ceil(file.size / 1024)} KB. The limit is ${maxKb} KB.`));
+      if (!/\.csv$/i.test(file.name)) return reject(new Error('Use a .csv file. In Excel: File, Save As, CSV UTF-8.'));
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(new Error('Could not read that file.'));
+      r.readAsText(file, 'utf-8');
     });
   }
 
@@ -151,6 +169,7 @@
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/documents', label: 'Documents' },
     { path: '/issue',     label: 'Issue document', show: canIssue },
+    { path: '/batches',   label: 'Bulk issue' },
     { path: '/search',    label: 'Search' },
     { group: 'Oversight' },
     { path: '/scans',     label: 'Verification log' },
@@ -178,6 +197,7 @@
         <div class="actions">${canIssue() ? '<a class="btn" href="#/issue">Issue document</a>' : ''}
         <a class="btn secondary" href="#/search">Search</a></div></div>
       ${low ? `<div class="notice">You have ${esc(low)} recovery codes left. Ask an Owner to reset your access to get new ones.</div>` : ''}
+      <div id="dash-pending"></div>
       ${tampered ? `<div class="notice bad">${tampered} scan${tampered > 1 ? 's' : ''} with a tampered link in the last 30 days. <a href="#/scans?result=tampered">Review</a></div>` : ''}
       <div class="cards">
         <div class="card"><div class="k">Active documents</div><div class="v">${esc(d.documents.active)}</div></div>
@@ -189,6 +209,7 @@
       </div>
       <div class="panel"><h2>Recent verifications</h2>${scansTable(d.recent_scans)}
         <p style="margin:12px 0 0"><a href="#/scans">View the full verification log</a></p></div>`;
+    showPendingApprovals();
   };
 
   function scansTable(rows) {
@@ -234,6 +255,16 @@
     $('clear-f').onclick = () => go('/documents');
   };
 
+  async function showPendingApprovals() {
+    if (!has('owner', 'approver')) return;
+    try {
+      const b = await api('/batches');
+      const n = b.pending_count || 0;
+      const box = $('dash-pending');
+      if (n && box) box.innerHTML = `<div class="notice">${n} bulk batch${n > 1 ? 'es are' : ' is'} awaiting approval. <a href="#/batches">Review</a></div>`;
+    } catch (e) { /* batches not set up yet */ }
+  }
+
   V['/doc'] = async (el, q, id) => {
     const d = await api('/documents/' + encodeURIComponent(id));
     const doc = d.document, m = doc.metadata || {};
@@ -251,6 +282,7 @@
     ].filter(([, v]) => v !== '');
     if (doc.status === 'revoked') rows.push(['Revoked', esc(`${fmtTime(doc.revoked_at)} by ${who(d.revoked_by_user)}, reason: ${reason}`)]);
     if (doc.replaces_doc_id) rows.push(['Replaces', `<a href="#/doc/${encodeURIComponent(doc.replaces_doc_id)}" class="mono">${esc(doc.replaces_doc_id)}</a>`]);
+    if (doc.batch_id) rows.push(['Bulk upload', `<a href="#/batch/${encodeURIComponent(doc.batch_id)}">View batch</a>`]);
     if (doc.superseded_by) rows.push(['Replaced by', `<a href="#/doc/${encodeURIComponent(doc.superseded_by)}" class="mono">${esc(doc.superseded_by)}</a>`]);
 
     const base = '/app-api/documents/' + encodeURIComponent(doc.doc_id);
@@ -311,6 +343,10 @@
     if (d.roles) parts.push('Roles: ' + d.roles.map(r => ROLE_LABEL[r] || r).join(', '));
     if (d.doc_type) parts.push(d.doc_type);
     if (d.matric_number) parts.push(d.matric_number);
+    if (d.file_name) parts.push(d.file_name);
+    if (d.rows != null) parts.push(`${d.rows} rows` + (d.errors ? `, ${d.errors} with errors` : ''));
+    if (d.issued != null) parts.push(`${d.issued} issued`);
+    if (d.batch_id && d.row) parts.push(`Bulk upload, row ${d.row}`);
     return parts.join(' · ');
   }
 
@@ -625,15 +661,150 @@
     });
   };
 
+
+  // ── Bulk issue (Phase 3) ────────────────────────────────────────────────
+  const BATCH_LABEL = { draft: 'Draft', pending_approval: 'Awaiting approval', issued: 'Issued', rejected: 'Rejected', cancelled: 'Cancelled' };
+  const COL_LABEL = { full_name: 'Full name', matric_number: 'Matric number', title: 'Title', programme: 'Programme', faculty: 'Faculty',
+    department: 'Department', degree_class: 'Class of degree', graduation_year: 'Graduation year', entry_year: 'Entry year', expiry_date: 'Expiry date' };
+
+  V['/batches'] = async (el, q) => {
+    const page = parseInt(q.get('page')) || 1;
+    const d = await api('/batches?page=' + page);
+    const appr = d.approval_required;
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Bulk issue</h1><div class="sub">Issue a whole class list from one CSV file, up to ${esc(d.max_rows)} rows at a time</div></div>
+        <div class="actions"><a class="btn secondary" href="/app-api/batches/template.csv">Download template</a>
+        ${canIssue() ? '<button class="btn" id="b-up">Upload CSV</button>' : ''}</div></div>
+      <div class="panel"><div class="slot-head"><div><h2>Approval before issue: ${appr ? 'On' : 'Off'}</h2>
+          <p class="muted" style="margin:6px 0 0">${appr
+            ? 'A batch waits until an Owner or Approver who didn\'t prepare it approves it. Nothing is issued before then.'
+            : 'Submitting a batch issues its documents straight away. An Owner can switch on a second pair of eyes.'}</p></div>
+        ${has('owner') ? `<button class="btn secondary sm" id="b-appr">${appr ? 'Turn off' : 'Turn on'}</button>` : ''}</div></div>
+      <div class="panel">${d.data.length ? `<div class="table-wrap"><table><thead><tr><th>Uploaded</th><th>File</th><th>Type</th><th>Rows</th><th>Status</th><th>By</th></tr></thead><tbody>
+        ${d.data.map(b => `<tr class="click" data-batch="${esc(b.id)}"><td>${esc(fmtTime(b.created_at))}</td><td>${esc(b.file_name)}</td>
+          <td>${esc(typeLabel(b.doc_type))}</td>
+          <td>${b.status === 'issued' ? `${esc(b.issued_count)} issued` : `${esc(b.valid_count)} ready`}${b.error_count ? ` · <span class="bad-text">${esc(b.error_count)} with errors</span>` : ''}</td>
+          <td>${badge('b-' + b.status, BATCH_LABEL[b.status])}</td><td>${esc(b.created_by_name || b.created_by_email || '')}</td></tr>`).join('')}
+        </tbody></table></div>${pager(d.page, d.limit, d.total, p => go('/batches', { page: p }))}`
+        : '<p class="muted">No uploads yet. Download the template, fill one row per graduate, save it as CSV, then upload it here. Nothing is issued until you check the rows and confirm.</p>'}</div>`;
+    el.querySelectorAll('tr[data-batch]').forEach(tr => tr.onclick = () => go('/batch/' + tr.dataset.batch));
+    if ($('b-up')) $('b-up').onclick = () => modal({
+      title: 'Upload CSV', submit: 'Check file',
+      lead: 'Every row is checked first. You see the results before anything is issued.',
+      fields: [
+        { name: 'doc_type', label: 'Document type for every row', type: 'select', value: 'Certificate',
+          options: d.doc_types.map(t => ({ value: t, label: typeLabel(t) })) },
+        { name: 'csv', label: 'CSV file', type: 'file', accept: '.csv,text/csv', asText: true, maxKb: 1500,
+          hint: 'Required columns: full_name, matric_number, title. In Excel use File, Save As, CSV UTF-8.' },
+      ],
+      onSubmit: async v => {
+        if (!v.csv) throw new Error('Choose a CSV file.');
+        const r = await api('/batches', { method: 'POST', body: { doc_type: v.doc_type, csv: v.csv, file_name: v.csv_name } });
+        if (r.ignored_columns && r.ignored_columns.length) sessionStorage.setItem('uv-ignored-' + r.batch.id, r.ignored_columns.join(', '));
+        go('/batch/' + r.batch.id);
+      },
+    });
+    if ($('b-appr')) $('b-appr').onclick = () => modal({
+      title: appr ? 'Turn approval off' : 'Turn approval on', submit: appr ? 'Turn off' : 'Turn on', danger: appr,
+      lead: appr ? 'New batches will issue as soon as they are submitted. Batches already waiting still need a decision.'
+                 : 'Every batch will need an Owner or Approver, other than the person who prepared it, to approve it before anything is issued. Single documents are not affected.',
+      onSubmit: async () => { await api('/settings/approval', { method: 'PATCH', body: { approval_required: !appr } }); toast(appr ? 'Approval turned off.' : 'Approval turned on.'); render(); },
+    });
+  };
+
+  V['/batch'] = async (el, q, id) => {
+    const d = await api('/batches/' + encodeURIComponent(id));
+    const b = d.batch;
+    const who = uid => { const u = d.users.find(x => x.id === uid); return u ? (u.full_name || u.email) : ''; };
+    const warnCount = d.rows.filter(r => r.warnings.length && !r.errors.length).length;
+    const onlyProblems = q.get('show') === 'problems';
+    const rows = onlyProblems ? d.rows.filter(r => r.errors.length || r.warnings.length) : d.rows;
+    const mine = b.created_by === S.user.id || b.submitted_by === S.user.id;
+    const canDecide = has('owner', 'approver') && !mine;
+    const ignored = sessionStorage.getItem('uv-ignored-' + b.id);
+    const base = '/app-api/batches/' + encodeURIComponent(b.id);
+
+    const actions = [];
+    if (b.status === 'draft' && canIssue() && b.valid_count)
+      actions.push(`<button class="btn" id="bt-submit">${d.approval_required ? `Submit ${b.valid_count} for approval` : `Issue ${b.valid_count} document${b.valid_count > 1 ? 's' : ''}`}</button>`);
+    if (b.status === 'pending_approval' && canDecide)
+      actions.push('<button class="btn" id="bt-approve">Approve and issue</button>', '<button class="btn danger" id="bt-reject">Reject</button>');
+    if (['draft', 'pending_approval'].includes(b.status) && canIssue() && (b.created_by === S.user.id || has('owner')))
+      actions.push('<button class="btn secondary" id="bt-cancel">Cancel batch</button>');
+    if (b.status === 'issued' && canIssue()) actions.push(`<a class="btn" href="${base}/pdfs.zip">Download all PDFs (zip)</a>`);
+    if (b.error_count) actions.push(`<a class="btn secondary" href="${base}/errors.csv">Rows to fix (CSV)</a>`);
+
+    let note = '';
+    if (b.status === 'draft') note = b.valid_count
+      ? `${b.valid_count} row${b.valid_count > 1 ? 's are' : ' is'} ready. ${b.error_count ? `${b.error_count} row${b.error_count > 1 ? 's have' : ' has'} errors and will be skipped; download them, fix them and upload them as a new file.` : ''} Nothing has been issued yet.`
+      : 'No row is ready to issue. Download the rows to fix, correct them and upload the file again.';
+    if (b.status === 'pending_approval') note = `Submitted by ${who(b.submitted_by)} on ${fmtTime(b.submitted_at)}. ${canDecide ? 'Check the rows, then approve or reject.' : 'Waiting for an Owner or Approver who didn\'t prepare it.'}`;
+    if (b.status === 'issued') note = `${b.issued_count} document${b.issued_count > 1 ? 's' : ''} issued on ${fmtTime(b.issued_at)}${b.decided_by ? `, approved by ${who(b.decided_by)}` : ''}. Each one has its own QR code and appears under Documents.`;
+    if (b.status === 'rejected') note = `Rejected by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}: ${b.decision_note || ''}`;
+    if (b.status === 'cancelled') note = `Cancelled by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}. Nothing was issued.`;
+
+    el.innerHTML = `
+      <div class="page-head"><div><h1>${esc(b.file_name)}</h1><div class="sub">${esc(typeLabel(b.doc_type))} · uploaded by ${esc(who(b.created_by))} on ${esc(fmtTime(b.created_at))}</div></div>
+        <div class="actions">${badge('b-' + b.status, BATCH_LABEL[b.status])}</div></div>
+      <div class="notice${b.status === 'rejected' ? ' bad' : b.status === 'issued' ? ' ok' : ''}">${esc(note)}</div>
+      ${ignored ? `<div class="notice">These columns weren't recognised and were ignored: ${esc(ignored)}.</div>` : ''}
+      <div class="cards">
+        <div class="card"><div class="k">Rows</div><div class="v">${esc(b.row_count)}</div></div>
+        <div class="card"><div class="k">${b.status === 'issued' ? 'Issued' : 'Ready'}</div><div class="v">${esc(b.status === 'issued' ? b.issued_count : b.valid_count)}</div></div>
+        <div class="card${b.error_count ? ' alert-card' : ''}"><div class="k">Errors (skipped)</div><div class="v">${esc(b.error_count)}</div></div>
+        <div class="card"><div class="k">Warnings</div><div class="v">${esc(warnCount)}</div></div>
+      </div>
+      ${actions.length ? `<div class="panel"><div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div></div>` : ''}
+      <div class="panel"><div class="slot-head"><h2>Rows</h2>
+        <a class="btn ghost sm" href="#/batch/${esc(b.id)}${onlyProblems ? '' : '?show=problems'}">${onlyProblems ? 'Show all rows' : 'Show only rows with problems'}</a></div>
+        <div class="table-wrap"><table><thead><tr><th>Row</th><th>Full name</th><th>Matric number</th><th>Title</th><th>Class</th><th>Result</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td>${esc(r.row_no)}</td><td>${esc(r.data.full_name || '')}</td><td class="mono">${esc(r.data.matric_number || '')}</td>
+          <td>${esc(r.data.title || '')}</td><td>${esc(r.data.degree_class || '')}</td>
+          <td>${r.doc_id ? `<a class="mono" href="#/doc/${encodeURIComponent(r.doc_id)}">${esc(r.doc_id)}</a>`
+              : r.errors.length ? `<span class="bad-text">${esc(r.errors.join(' '))}</span>`
+              : b.status === 'draft' || b.status === 'pending_approval' ? badge('active', 'Ready') : '<span class="muted">Not issued</span>'}
+            ${r.warnings.length ? `<div class="warn-text">${esc(r.warnings.join(' '))}</div>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No rows with problems.</td></tr>'}
+        </tbody></table></div></div>`;
+
+    const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (err) { toast(err.message); btn.disabled = false; } };
+    if ($('bt-submit')) $('bt-submit').onclick = () => modal({
+      title: d.approval_required ? 'Submit for approval' : `Issue ${b.valid_count} documents`, submit: d.approval_required ? 'Submit' : 'Issue now',
+      lead: d.approval_required
+        ? 'An Owner or Approver will check this batch. Nothing is issued until they approve it.'
+        : `This creates ${b.valid_count} live ${typeLabel(b.doc_type)} records, each with its own QR code.${b.error_count ? ` The ${b.error_count} rows with errors are skipped.` : ''} A wrong record can be revoked or reissued later, but not deleted.`,
+      onSubmit: async () => {
+        const r = await api('/batches/' + b.id + '/submit', { method: 'POST' });
+        toast(r.status === 'issued' ? `${r.issued} documents issued.` : 'Sent for approval.'); render();
+      },
+    });
+    if ($('bt-approve')) $('bt-approve').onclick = () => modal({
+      title: 'Approve and issue', submit: `Issue ${b.valid_count} documents`,
+      lead: `This issues ${b.valid_count} ${typeLabel(b.doc_type)} records at once, each with its own QR code.`,
+      fields: [{ name: 'note', label: 'Note (optional)', type: 'textarea' }],
+      onSubmit: async v => { const r = await api('/batches/' + b.id + '/approve', { method: 'POST', body: v }); toast(`${r.issued} documents issued.`); render(); },
+    });
+    if ($('bt-reject')) $('bt-reject').onclick = () => modal({
+      title: 'Reject batch', submit: 'Reject', danger: true,
+      lead: 'Nothing is issued. The person who prepared it sees your reason and uploads a corrected file.',
+      fields: [{ name: 'note', label: 'Reason', type: 'textarea' }],
+      onSubmit: async v => { await api('/batches/' + b.id + '/reject', { method: 'POST', body: v }); toast('Batch rejected.'); render(); },
+    });
+    if ($('bt-cancel')) $('bt-cancel').onclick = () => modal({
+      title: 'Cancel batch', submit: 'Cancel batch', danger: true, lead: 'Nothing in it is issued. It stays in the list as cancelled.',
+      onSubmit: async () => { await api('/batches/' + b.id + '/cancel', { method: 'POST' }); toast('Batch cancelled.'); render(); },
+    });
+  };
+
   // ── Router ──────────────────────────────────────────────────────────────
   async function render() {
     const { path, q } = routeParams();
     const el = $('view');
     let view, arg;
     if (path.startsWith('/doc/')) { view = V['/doc']; arg = decodeURIComponent(path.slice(5)); }
+    else if (path.startsWith('/batch/')) { view = V['/batch']; arg = decodeURIComponent(path.slice(7)); }
     else view = V[path];
     if (!view) { go('/dashboard'); return; }
-    renderNav(path.startsWith('/doc/') ? '/documents' : path);
+    renderNav(path.startsWith('/doc/') ? '/documents' : path.startsWith('/batch/') ? '/batches' : path);
     $('side').classList.remove('open');
     el.innerHTML = '<div class="empty">Loading...</div>';
     try { await view(el, q, arg); }
