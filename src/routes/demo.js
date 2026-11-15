@@ -3,6 +3,7 @@ const router     = require('express').Router();
 const pool       = require('../db/pool');
 const nodemailer = require('nodemailer');
 const { loginLimiter } = require('../middleware/rateLimiter');
+const { requireDemoAuth } = require('../middleware/demoAuth');
 
 const DEMO_USER = process.env.DEMO_USER || 'univerify';
 const DEMO_PASS = process.env.DEMO_PASS || 'Demo@2026!';
@@ -139,7 +140,7 @@ router.post('/logout', (req, res) => {
 });
 
 // GET /demo/visitors
-router.get('/visitors', async (req, res) => {
+router.get('/visitors', requireDemoAuth, async (req, res) => {
   const tenantId = req.tenant?.id;
   try {
     const result = await pool.query(
