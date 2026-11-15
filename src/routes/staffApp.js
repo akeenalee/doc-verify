@@ -455,3 +455,4 @@ router.post('/users/:id/reset-access', OWNER, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.DOC_TYPES = DOC_TYPES;
