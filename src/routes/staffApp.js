@@ -73,16 +73,17 @@ function documentInput(body, tenant) {
   };
 }
 
-async function insertDocument(client, tenant, staff, v, replacesDocId = null) {
+async function insertDocument(client, tenant, staff, v, replacesDocId = null, batchId = null) {
   const docId = generateDocId(tenant.short_code || 'DOC');
+  const cols = ['doc_id', 'title', 'issued_to', 'issued_by', 'doc_type', 'expiry_date', 'metadata', 'tenant_id', 'issued_by_user', 'replaces_doc_id'];
+  const vals = [docId, v.title, v.issued_to, v.issued_by, v.doc_type, v.expiry_date,
+     JSON.stringify(v.metadata), tenant.id, staff.id, replacesDocId];
+  // batch_id arrives with migration 006; single issues never touch it
+  if (batchId) { cols.push('batch_id'); vals.push(batchId); }
   const r = await client.query(
-    `INSERT INTO documents
-       (doc_id, title, issued_to, issued_by, doc_type, expiry_date, metadata, tenant_id, issued_by_user, replaces_doc_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-     RETURNING *`,
-    [docId, v.title, v.issued_to, v.issued_by, v.doc_type, v.expiry_date,
-     JSON.stringify(v.metadata), tenant.id, staff.id, replacesDocId]
-  );
+    `INSERT INTO documents (${cols.join(', ')})
+     VALUES (${vals.map((_, i) => '$' + (i + 1)).join(',')})
+     RETURNING *`, vals);
   return r.rows[0];
 }
 
@@ -456,3 +457,5 @@ router.post('/users/:id/reset-access', OWNER, async (req, res) => {
 
 module.exports = router;
 module.exports.DOC_TYPES = DOC_TYPES;
+module.exports.documentInput = documentInput;
+module.exports.insertDocument = insertDocument;
