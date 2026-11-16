@@ -19,6 +19,7 @@ const { sniffImage, isoDate } = require('../utils/branding');
 const { generatePDF } = require('../utils/pdfGenerator');
 const { DOC_TYPES }   = require('./staffApp');
 const { listKeys, rotateKey, activeKey, currentMasterRef } = require('../utils/signing');
+const { FIELDS, disclosure } = require('../utils/disclosure');
 
 const OWNER = requireStaff('owner');
 const LOGO_MAX = 300 * 1024;
@@ -145,7 +146,7 @@ router.patch('/approval', OWNER, async (req, res) => {
       const r = await pool.query(
         `SELECT COUNT(*) AS users,
                 COUNT(*) FILTER (WHERE roles && ARRAY['owner','approver']::text[]) AS deciders
-         FROM tenant_users WHERE tenant_id = $1 AND status = 'active'`, [req.tenant.id]);
+         FROM tenant_users WHERE tenant_id = $1 AND status = 'active' AND NOT ('vendor' = ANY(roles))`, [req.tenant.id]);
       if (parseInt(r.rows[0].users) < 2 || parseInt(r.rows[0].deciders) < 1)
         throw bad(409, 'Approval needs at least two active users, one of them an Owner or Approver, because nobody can approve their own batch. Invite someone first.');
     }
@@ -302,6 +303,29 @@ router.patch('/security', OWNER, async (req, res) => {
     await pool.query(`UPDATE tenants SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
     for (const action of log) await logActivity(req, { action, targetType: 'tenant', targetId: req.tenant.id });
     res.json(await securityState(req.tenant));
+  } catch (e) { sendErr(res, e, 'Failed to save.'); }
+});
+
+// ── What the public verify page shows ───────────────────────────────────────
+router.get('/disclosure', OWNER, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT disclosure FROM tenants WHERE id = $1', [req.tenant.id]);
+    res.json({ disclosure: disclosure(r.rows[0]?.disclosure), fields: FIELDS });
+  } catch (e) { sendErr(res, e, 'Failed to load.'); }
+});
+
+router.patch('/disclosure', OWNER, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const cur = disclosure((await pool.query('SELECT disclosure FROM tenants WHERE id = $1', [req.tenant.id])).rows[0]?.disclosure);
+    const next = { ...cur };
+    for (const k of Object.keys(FIELDS)) if (typeof body[k] === 'boolean') next[k] = body[k];
+    const changed = Object.keys(FIELDS).filter(k => next[k] !== cur[k]);
+    if (!changed.length) return res.json({ disclosure: cur, fields: FIELDS });
+    await pool.query('UPDATE tenants SET disclosure = $2 WHERE id = $1', [req.tenant.id, JSON.stringify(next)]);
+    await logActivity(req, { action: 'disclosure_updated', targetType: 'tenant', targetId: req.tenant.id,
+      detail: { changes: changed.map(k => `${FIELDS[k].label}: ${next[k] ? 'shown' : 'hidden'}`) } });
+    res.json({ disclosure: next, fields: FIELDS });
   } catch (e) { sendErr(res, e, 'Failed to save.'); }
 });
 

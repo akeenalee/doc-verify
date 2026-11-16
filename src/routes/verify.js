@@ -6,6 +6,8 @@ const { initializeTransaction, verifyTransaction } = require('../utils/paystack'
 const { verifyDocSignature, tenantBaseUrl, tenantSubdomain,
         signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
 const { parseSig, checkV2, signDocument } = require('../utils/signing');
+const { disclosure } = require('../utils/disclosure');
+const { checkScanAlerts } = require('../utils/scanAlerts');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
@@ -24,7 +26,7 @@ router.get('/', async (req, res) => {
     const result = await pool.query(
       `SELECT d.id, d.doc_id, d.title, d.issued_to, d.issued_by, d.doc_type,
               d.issue_date, d.expiry_date, d.status, d.metadata, d.tenant_id, d.superseded_by,
-              COALESCE(t.sig_strict, FALSE) AS sig_strict
+              COALESCE(t.sig_strict, FALSE) AS sig_strict, t.disclosure
        FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id
        WHERE d.doc_id = $1`,
       [doc]
@@ -235,10 +237,12 @@ router.get('/doc-preview/:docId', async (req, res) => {
   }
   try {
     const result = await pool.query(
-      'SELECT * FROM documents WHERE doc_id = $1',
+      'SELECT d.*, t.disclosure FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id WHERE d.doc_id = $1',
       [docId]
     );
     if (!result.rows.length) return res.status(404).send('Document not found');
+    if (!disclosure(result.rows[0].disclosure).document_pdf)
+      return res.status(403).send('The institution does not publish the full document on the verification page.');
 
     const docData = result.rows[0];
     res.setHeader('Content-Type', 'application/pdf');
@@ -371,6 +375,7 @@ async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', ten
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [docId, ip, userAgent, result, paymentMethod, geo, tenantId]
     );
+    await checkScanAlerts(docId, result).catch(e => console.error('Scan alert check:', e.message));
   } catch (e) {
     console.error('Log scan error:', e.message);
     // Fallback without geo_location if column missing
@@ -391,7 +396,7 @@ function scanResult(docData) {
 }
 
 function renderResult(docData, isExpired) {
-  docData = { ...docData,
+  docData = { ...docData, _show: disclosure(docData.disclosure),
     _previewUrl: `/verify/doc-preview/${encodeURIComponent(docData.doc_id)}?t=${signPreviewToken(docData.doc_id)}` };
   if (docData.status === 'revoked') return renderPage('Document Revoked', null, 'revoked', docData);
   if (docData.status === 'superseded') return renderPage('Document Superseded',
@@ -421,11 +426,16 @@ function renderPage(pageTitle, message, state, docData) {
   };
   const s = states[state] || states.error;
 
+  const show = docData ? (docData._show || disclosure(docData.disclosure)) : {};
+  const meta = (docData && docData.metadata) || {};
   const docFields = docData ? `
     <table style="width:100%;border-collapse:collapse;margin-top:16px;">
       ${row('Document ID', escHtml(docData.doc_id), true)}
-      ${row('Title', escHtml(docData.title))}
-      ${row('Issued To', escHtml(docData.issued_to))}
+      ${show.title ? row('Title', escHtml(docData.title)) : ''}
+      ${show.holder_name ? row('Issued To', escHtml(docData.issued_to)) : ''}
+      ${show.programme && meta.programme ? row('Programme', escHtml(meta.programme)) : ''}
+      ${show.class_of_degree && (meta.degree_class || meta.class) ? row('Class of Degree', escHtml(meta.degree_class || meta.class)) : ''}
+      ${show.graduation_year && meta.graduation_year ? row('Graduation Year', escHtml(meta.graduation_year)) : ''}
       ${row('Issued By', escHtml(docData.issued_by))}
       ${docData.doc_type ? row('Document Type', escHtml(docData.doc_type)) : ''}
       ${row('Issue Date', formatDate(docData.issue_date))}
@@ -433,7 +443,7 @@ function renderPage(pageTitle, message, state, docData) {
     </table>
   ` : `<p style="color:#666;margin:16px 0 0;">${message || ''}</p>`;
 
-  const showPreview = docData && state === 'verified';
+  const showPreview = docData && state === 'verified' && show.document_pdf;
 
   const documentPreview = showPreview ? `
     <div style="margin-top:28px;">

@@ -9,9 +9,10 @@
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const has = (...roles) => S.user && S.user.roles.some(r => roles.includes(r));
   const canIssue = () => has('owner', 'officer', 'approver');
+  const vendorOnly = () => S.user && S.user.roles.length === 1 && S.user.roles[0] === 'vendor';
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
   const fmtTime = d => d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-  const ROLE_LABEL = { owner: 'Owner', officer: 'Records Officer', approver: 'Approver', auditor: 'Auditor' };
+  const ROLE_LABEL = { owner: 'Owner', officer: 'Records Officer', approver: 'Approver', auditor: 'Auditor', vendor: 'Print vendor' };
   const STATUS_LABEL = { active: 'Active', revoked: 'Revoked', superseded: 'Superseded', expired: 'Expired' };
   const RESULT_LABEL = { found: 'Verified', revoked: 'Revoked', superseded: 'Superseded', not_found: 'Not found', tampered: 'Tampered link', old_link: 'Older QR refused' };
   const PAY_LABEL = { none: 'None', student_token: 'Graduate credit', employer_payment: 'Verifier paid', replacement_pdf: 'Graduate download' };
@@ -30,6 +31,14 @@
     claim_code_issued: 'Created graduate claim code', batch_claim_codes_issued: 'Created claim codes for batch',
     signing_key_rotated: 'Rotated QR signing key', strict_mode_enabled: 'Turned strict QR checking on', strict_mode_disabled: 'Turned strict QR checking off',
     claim_codes_required: 'Required claim codes for the graduate portal', claim_codes_not_required: 'Stopped requiring claim codes',
+    print_spec_updated: 'Changed QR print layout', print_pack_downloaded: 'Downloaded print pack',
+    disclosure_updated: 'Changed what verifiers see', scan_alert_acknowledged: 'Handled scan alert',
+  };
+  const ALERT_LABEL = { many_scans: 'Many scans', many_places: 'Scanned in several cities', tampered: 'Tampered link' };
+  const ALERT_TEXT = {
+    many_scans: d => `${d.scans_24h} scans in 24 hours. A copied QR on fake certificates often shows up like this.`,
+    many_places: d => `Scanned from ${(d.places || []).join(', ')} within 24 hours.`,
+    tampered: () => 'Someone opened a link for this document with a signature that did not match. That can mean a forged or edited QR.',
   };
   const TYPE_LABEL = { Certificate: 'Degree Certificate', Transcript: 'Academic Transcript', Completion: 'Course Completion Certificate',
     Admission: 'Admission Letter', Attestation: 'Attestation Letter' };
@@ -168,14 +177,18 @@
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const NAV = [
-    { group: 'Work' },
+    { group: 'Print', show: vendorOnly },
+    { path: '/print', label: 'Print jobs', show: vendorOnly },
+    { group: 'Work', show: () => !vendorOnly() },
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/documents', label: 'Documents' },
     { path: '/issue',     label: 'Issue document', show: canIssue },
     { path: '/batches',   label: 'Bulk issue' },
     { path: '/search',    label: 'Search' },
-    { group: 'Oversight' },
+    { path: '/print',     label: 'Print jobs', show: canIssue },
+    { group: 'Oversight', show: () => !vendorOnly() },
     { path: '/scans',     label: 'Verification log' },
+    { path: '/alerts',    label: 'Scan alerts' },
     { path: '/activity',  label: 'Activity log', show: () => has('owner', 'auditor') },
     { group: 'Administration', show: () => has('owner') },
     { path: '/users',     label: 'Users and roles', show: () => has('owner') },
@@ -184,7 +197,7 @@
     { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
   ];
   function renderNav(active) {
-    $('nav').innerHTML = NAV.filter(i => !i.show || i.show()).map(i => i.group
+    $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
       ? `<div class="nav-group">${esc(i.group)}</div>`
       : `<a href="#${i.path}" class="${active.startsWith(i.path) ? 'active' : ''}">${esc(i.label)}</a>`).join('');
   }
@@ -202,6 +215,7 @@
         <a class="btn secondary" href="#/search">Search</a></div></div>
       ${low ? `<div class="notice">You have ${esc(low)} recovery codes left. Ask an Owner to reset your access to get new ones.</div>` : ''}
       <div id="dash-pending"></div>
+      ${d.open_alerts ? `<div class="notice bad">${d.open_alerts} open scan alert${d.open_alerts > 1 ? 's' : ''}. <a href="#/alerts">Review</a></div>` : ''}
       ${tampered ? `<div class="notice bad">${tampered} scan${tampered > 1 ? 's' : ''} with a tampered link in the last 30 days. <a href="#/scans?result=tampered">Review</a></div>` : ''}
       <div class="cards">
         <div class="card"><div class="k">Active documents</div><div class="v">${esc(d.documents.active)}</div></div>
@@ -295,6 +309,7 @@
       actions.push(`<a class="btn" href="${base}/pdf">Download PDF</a>`);
       actions.push(`<a class="btn secondary" href="${base}/qr">QR PNG</a>`);
       actions.push(`<a class="btn secondary" href="${base}/qr?size=print">QR PNG (print)</a>`);
+      actions.push(`<a class="btn secondary" href="${base}/qr?format=svg">QR SVG (print)</a>`);
     }
     actions.push(`<button class="btn secondary" id="copy-verify">Copy verify link</button>`);
     if (canIssue() && ['active', 'revoked'].includes(doc.status)) actions.push(`<a class="btn secondary" href="#/issue?reissue=${encodeURIComponent(doc.doc_id)}">Reissue / correct</a>`);
@@ -364,6 +379,9 @@
     if (d.roles) parts.push('Roles: ' + d.roles.map(r => ROLE_LABEL[r] || r).join(', '));
     if (d.doc_type) parts.push(d.doc_type);
     if (d.matric_number) parts.push(d.matric_number);
+    if (d.changes) parts.push(d.changes.join('; '));
+    if (d.kind) parts.push(ALERT_LABEL[d.kind] || d.kind);
+    if (d.size_mm) parts.push(`${d.paper || ''} ${d.anchor || ''}, ${d.x_mm} x ${d.y_mm} mm, ${d.size_mm} mm QR`);
     if (d.file_name) parts.push(d.file_name);
     if (d.rows != null) parts.push(`${d.rows} rows` + (d.errors ? `, ${d.errors} with errors` : ''));
     if (d.issued != null) parts.push(`${d.issued} issued`);
@@ -487,6 +505,7 @@
     { value: 'officer', label: 'Records Officer', hint: 'Issue, revoke, reissue, search' },
     { value: 'approver', label: 'Approver', hint: 'Issues today; approves batches once approval is switched on' },
     { value: 'auditor', label: 'Auditor', hint: 'Read only: documents, logs, activity' },
+    { value: 'vendor', label: 'Print vendor', hint: 'Outside printer: downloads QR print packs only. Can\'t be combined with other roles' },
   ];
 
   V['/users'] = async (el) => {
@@ -686,7 +705,7 @@
   // ── QR and portal security (Phase 4) ────────────────────────────────────
   V['/security'] = async (el) => {
     if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can change security settings.</div>'; return; }
-    const d = await api('/settings/security');
+    const [d, dis] = await Promise.all([api('/settings/security'), api('/settings/disclosure')]);
     const active = d.keys.find(k => k.status === 'active');
     const KEY_STATUS = { active: 'In use', retired: 'Retired, still checks older QRs', revoked: 'Revoked' };
     el.innerHTML = `
@@ -707,7 +726,17 @@
       <div class="panel"><h2>Graduate portal claim codes</h2>
         <p class="muted">With claim codes required, a graduate can only open a portal account for a matric number with the one-off code you give them. Without it, anyone who knows a matric number could see that graduate's documents and who verified them.</p>
         <p>Claim codes are <strong>${d.student_claim_required ? 'required' : 'not required'}</strong>.</p>
-        <button class="btn${d.student_claim_required ? ' danger' : ''}" id="claims">${d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes'}</button></div>`;
+        <button class="btn${d.student_claim_required ? ' danger' : ''}" id="claims">${d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes'}</button></div>
+      <div class="panel"><h2>What verifiers see</h2>
+        <p class="muted">After a verifier pays or the graduate uses a credit, the verify page always shows the document ID, ${esc(S.tenant.name)} as issuer, the document type, issue date and status. Choose what else it shows. Less is safer for graduates; more saves verifiers a phone call.</p>
+        <form id="dis-f"><div class="checks">${Object.entries(dis.fields).map(([k, f]) => `<label><input type="checkbox" name="${esc(k)}"${dis.disclosure[k] ? ' checked' : ''}/> <span>${esc(f.label)}</span></label>`).join('')}</div>
+        <button class="btn" type="submit" style="margin-top:12px">Save</button></form></div>`;
+    $('dis-f').onsubmit = async e => {
+      e.preventDefault();
+      const body = {}; Object.keys(dis.fields).forEach(k => { body[k] = e.target.elements[k].checked; });
+      try { await api('/settings/disclosure', { method: 'PATCH', body }); toast('Saved. The verify page uses this straight away.'); }
+      catch (err) { toast(err.message); }
+    };
     const save = (body, msg) => api('/settings/security', { method: 'PATCH', body }).then(() => { toast(msg); render(); });
     $('rotate').onclick = () => modal({
       title: 'Rotate QR signing key', submit: 'Rotate key',
@@ -729,6 +758,69 @@
         : 'New accounts need a claim code. Existing accounts that never used one must enter a code before they see documents again.',
       onSubmit: () => save({ student_claim_required: !d.student_claim_required }, 'Saved.'),
     });
+  };
+
+  // ── Print jobs (Phase 4b) ───────────────────────────────────────────────
+  const ANCHOR_LABEL = { 'top-left': 'Top left', 'top-right': 'Top right', 'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right' };
+  V['/print'] = async (el) => {
+    const [j, sp] = await Promise.all([api('/print/jobs'), api('/print/specs')]);
+    const spec = t => sp.specs[t];
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Print jobs</h1><div class="sub">QR codes for documents printed by an outside printer</div></div></div>
+      ${vendorOnly() ? `<div class="notice">Each pack holds one QR per document (SVG and 600 dpi PNG), a manifest that says which QR goes on whose document, and the placement spec. Follow the spec, scan a sample before dispatch, and delete the pack once the job is delivered.</div>` : ''}
+      <div class="panel"><h2>Issued batches</h2>
+        ${j.jobs.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Documents</th><th>Issued</th><th>Last pack</th><th></th></tr></thead><tbody>
+          ${j.jobs.map(b => `<tr><td>${esc(b.file_name || '')}</td><td>${esc(typeLabel(b.doc_type))}</td><td>${esc(b.issued_count)}</td>
+            <td>${esc(fmtTime(b.issued_at))}</td><td>${esc(b.last_pack_at ? fmtTime(b.last_pack_at) : 'Never')}</td>
+            <td><a class="btn sm" href="/app-api/print/jobs/${esc(b.id)}/pack.zip">Download print pack</a></td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">No issued batches yet. Packs appear here once a bulk upload is issued.</div>'}</div>
+      <div class="panel"><h2>QR placement by document type</h2>
+        <p class="muted">Where the printer puts the QR. Codes are printed with a ${sp.dpi} dpi image or the SVG, and each dot must be at least ${sp.min_module_mm} mm for phones to read it reliably.</p>
+        <div class="table-wrap"><table><thead><tr><th>Document type</th><th>Paper</th><th>Corner</th><th>From side / edge</th><th>QR size</th><th>Dot size</th><th></th></tr></thead><tbody>
+          ${sp.doc_types.map(t => { const s = spec(t); return `<tr><td>${esc(typeLabel(t))}${s.custom ? '' : ' <span class="muted">(default)</span>'}</td>
+            <td>${esc(s.paper)}</td><td>${esc(ANCHOR_LABEL[s.anchor])}</td><td>${esc(s.x_mm)} / ${esc(s.y_mm)} mm</td><td>${esc(s.size_mm)} mm</td><td>${esc(s.module_mm)} mm</td>
+            <td style="white-space:nowrap"><a class="btn secondary sm" target="_blank" href="/app-api/print/specs/${encodeURIComponent(t)}/sheet.pdf">Spec sheet</a>
+            ${has('owner') ? ` <button class="btn ghost sm" data-spec="${esc(t)}">Change</button>` : ''}</td></tr>`; }).join('')}
+        </tbody></table></div></div>`;
+    el.querySelectorAll('[data-spec]').forEach(btn => btn.onclick = () => {
+      const t = btn.dataset.spec, s = spec(t);
+      modal({
+        title: 'QR placement: ' + typeLabel(t), submit: 'Save',
+        lead: 'Measure on a printed sample of this document. Distances run from the chosen corner to the nearest edge of the QR.',
+        fields: [
+          { name: 'paper', label: 'Paper', type: 'select', value: s.paper, options: sp.papers.map(p => ({ value: p, label: p })) },
+          { name: 'anchor', label: 'Corner', type: 'select', value: s.anchor, options: sp.anchors.map(a => ({ value: a, label: ANCHOR_LABEL[a] })) },
+          { name: 'x_mm', label: 'From the side edge (mm)', type: 'number', value: String(s.x_mm) },
+          { name: 'y_mm', label: 'From the top or bottom edge (mm)', type: 'number', value: String(s.y_mm) },
+          { name: 'size_mm', label: 'QR size (mm)', type: 'number', value: String(s.size_mm), hint: '30 mm is a safe default. Smaller codes are refused when the dots would be too small to scan.' },
+          { name: 'notes', label: 'Notes for the printer (optional)', type: 'textarea', value: s.notes },
+        ],
+        onSubmit: async v => { await api('/print/specs/' + encodeURIComponent(t), { method: 'PUT', body: v }); toast('Placement saved.'); render(); },
+      });
+    });
+  };
+
+  // ── Scan alerts (Phase 4b) ──────────────────────────────────────────────
+  V['/alerts'] = async (el, q) => {
+    const all = q.get('status') === 'all';
+    const d = await api('/alerts' + (all ? '?status=all' : ''));
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Scan alerts</h1><div class="sub">Scan patterns that may mean a copied or forged QR</div></div>
+        <div class="actions"><a class="btn ghost" href="#/alerts${all ? '' : '?status=all'}">${all ? 'Show open alerts only' : 'Show handled alerts too'}</a></div></div>
+      <div class="notice">An alert is not proof of fraud. A graduate applying to many employers in one day can trigger one too. Check the document's verification log, contact the graduate if needed, and revoke or reissue if the QR has been copied.</div>
+      <div class="panel">${d.alerts.length ? `<div class="table-wrap"><table><thead><tr><th>Raised</th><th>Document</th><th>Holder</th><th>Alert</th><th>Detail</th><th>Status</th><th></th></tr></thead><tbody>
+        ${d.alerts.map(a => `<tr><td>${esc(fmtTime(a.created_at))}</td><td class="mono"><a href="#/doc/${encodeURIComponent(a.doc_id)}">${esc(a.doc_id)}</a></td>
+          <td>${esc(a.issued_to || '')}</td><td>${badge(a.kind === 'tampered' ? 'tampered' : 'superseded', ALERT_LABEL[a.kind] || a.kind)}</td>
+          <td>${esc((ALERT_TEXT[a.kind] || (() => ''))(a.detail || {}))}</td>
+          <td>${a.acknowledged_at ? `Handled by ${esc(a.acknowledged_by || '')} on ${esc(fmtTime(a.acknowledged_at))}: ${esc(a.note || '')}` : badge('revoked', 'Open')}</td>
+          <td>${a.acknowledged_at ? '' : `<button class="btn secondary sm" data-ack="${esc(a.id)}">Mark handled</button>`}</td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">${all ? 'No alerts yet.' : 'No open alerts.'}</div>`}</div>`;
+    el.querySelectorAll('[data-ack]').forEach(btn => btn.onclick = () => modal({
+      title: 'Mark alert handled', submit: 'Mark handled',
+      lead: 'The same kind of alert stays quiet for this document for 24 hours after you mark it handled.',
+      fields: [{ name: 'note', label: 'What did you check or do?', type: 'textarea' }],
+      onSubmit: async v => { await api('/alerts/' + btn.dataset.ack + '/acknowledge', { method: 'POST', body: v }); toast('Alert marked handled.'); render(); },
+    }));
   };
 
   // ── Bulk issue (Phase 3) ────────────────────────────────────────────────
@@ -886,7 +978,8 @@
     if (path.startsWith('/doc/')) { view = V['/doc']; arg = decodeURIComponent(path.slice(5)); }
     else if (path.startsWith('/batch/')) { view = V['/batch']; arg = decodeURIComponent(path.slice(7)); }
     else view = V[path];
-    if (!view) { go('/dashboard'); return; }
+    if (!view) { go(vendorOnly() ? '/print' : '/dashboard'); return; }
+    if (vendorOnly() && path !== '/print') { go('/print'); return; }
     renderNav(path.startsWith('/doc/') ? '/documents' : path.startsWith('/batch/') ? '/batches' : path);
     $('side').classList.remove('open');
     el.innerHTML = '<div class="empty">Loading...</div>';
@@ -932,6 +1025,7 @@
       ],
       onSubmit: async v => { await api('/auth/password', { method: 'POST', body: v }); toast('Password changed.'); },
     });
+    if (vendorOnly()) $('top-search').style.visibility = 'hidden';
     $('top-search').onsubmit = e => { e.preventDefault(); go('/search', { q: $('top-q').value.trim() }); };
 
     window.addEventListener('hashchange', render);
