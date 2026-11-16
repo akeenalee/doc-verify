@@ -24,6 +24,7 @@ const { activeKey } = require('../utils/signing');
 const { generatePDF } = require('../utils/pdfGenerator');
 const { loadBrand } = require('../utils/branding');
 const { DOC_TYPES, documentInput } = require('./staffApp');
+const SR = require('../utils/studentRecords');
 
 const ANY      = requireStaff();
 const ISSUERS  = requireStaff('owner', 'officer', 'approver');
@@ -120,6 +121,25 @@ async function validateRows(tenant, docType, records) {
     for (const row of out) if (existing.has(row.matric) && !row.errors.length)
       row.warnings.push(`Already has an active ${docType}: ${existing.get(row.matric)}. Use Reissue if this one replaces it.`);
   }
+
+  // Student records (SIS or uploaded list): is each one a registered student,
+  // and does the name and status fit? Blanks the file left are filled from the record.
+  const required = await SR.requireRegistered(tenant.id);
+  if (matrics.length && (required || await SR.hasRecords(tenant.id))) {
+    const found = await SR.lookupMany(tenant.id, matrics);
+    for (const row of out) {
+      if (!row.matric || row.errors.length) continue;
+      const lk = found.get(SR.normMatric(row.matric));
+      const v = SR.assess(lk, docType, row.data.full_name, required);
+      row.errors.push(...v.errors);
+      row.warnings.push(...v.warnings);
+      if (lk && lk.found) {
+        for (const f of ['programme', 'faculty', 'department', 'degree_class', 'entry_year', 'graduation_year'])
+          if (!row.data[f] && lk.record[f]) row.data[f] = lk.record[f];
+        row.data.record_source = lk.source;
+      }
+    }
+  }
   return out;
 }
 
@@ -177,6 +197,7 @@ async function issueBatch(client, req, batch) {
        tenant.id, req.staff.id, req.staff.email, batch.id, clientIp(req)]);
   }
 
+  await SR.markIssued(client, tenant.id, issued.map(p => p.metadata.matric_number));
   await client.query(
     `UPDATE batches SET status = 'issued', issued_count = $2, issued_at = NOW() WHERE id = $1`,
     [batch.id, issued.length]);

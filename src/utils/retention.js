@@ -52,6 +52,14 @@ function rules() {
               AND COALESCE(b.decided_at, b.created_at) < NOW() - make_interval(days => $1)`,
       params: [days('RETAIN_BATCH_ROWS_DAYS', 90)],
     },
+    {
+      // Uploaded student-list records only exist to check who documents go to
+      name: 'student_records: issued or stale uploaded list entries',
+      sql: `DELETE FROM student_records
+            WHERE (issued_at IS NOT NULL AND issued_at < NOW() - make_interval(days => $1))
+               OR created_at < NOW() - make_interval(days => $2)`,
+      params: [days('RETAIN_STUDENT_LIST_ISSUED_DAYS', 30), days('RETAIN_STUDENT_LIST_DAYS', 180)],
+    },
   ];
 }
 

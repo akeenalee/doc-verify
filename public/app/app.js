@@ -33,6 +33,9 @@
     claim_codes_required: 'Required claim codes for the graduate portal', claim_codes_not_required: 'Stopped requiring claim codes',
     print_spec_updated: 'Changed QR print layout', print_pack_downloaded: 'Downloaded print pack',
     disclosure_updated: 'Changed what verifiers see', scan_alert_acknowledged: 'Handled scan alert',
+    student_list_uploaded: 'Uploaded student list', student_list_deleted: 'Deleted student list',
+    registered_check_on: 'Required registered students', registered_check_off: 'Stopped requiring registered students',
+    sis_connection_saved: 'Saved SIS connection', sis_connection_removed: 'Removed SIS connection', sis_connection_tested: 'Tested SIS connection',
   };
   const ALERT_LABEL = { many_scans: 'Many scans', many_places: 'Scanned in several cities', tampered: 'Tampered link' };
   const ALERT_TEXT = {
@@ -195,6 +198,7 @@
     { path: '/branding',  label: 'Branding', show: () => has('owner') },
     { path: '/signatories', label: 'Signatories', show: () => has('owner') },
     { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
+    { path: '/students',  label: 'Student records', show: () => has('owner') },
   ];
   function renderNav(active) {
     $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
@@ -403,12 +407,16 @@
       <div class="page-head"><div><h1>${reissueId ? 'Reissue / correct' : 'Issue document'}</h1>
         <div class="sub">${reissueId ? `Replaces <span class="mono">${esc(reissueId)}</span>. The old QR will tell verifiers to ask for the current copy.` : `Issued under ${esc(S.tenant.name)}, signed and QR-coded on save.`}</div></div></div>
       <div class="panel"><div class="alert" id="i-msg"></div>
-      <form id="issue-form"><div class="form-grid">
+      <form id="issue-form">
+        <div class="lookup-row"><div class="field" style="flex:1;min-width:200px;margin:0"><label for="i-matric_number">Matric number *</label>
+          <input type="text" id="i-matric_number" name="matric_number" value="${esc(m.matric_number || '')}" style="text-transform:uppercase" autocomplete="off"/></div>
+          <button class="btn secondary" type="button" id="i-look">Look up student</button></div>
+        <div class="alert" id="i-rec"></div>
+        <div class="form-grid">
         <div class="field"><label for="i-doc_type">Document type *</label><select id="i-doc_type" name="doc_type">
           ${S.meta.doc_types.map(t => `<option value="${esc(t)}"${(pre.doc_type || 'Certificate') === t ? ' selected' : ''}>${esc(typeLabel(t))}</option>`).join('')}</select></div>
         ${input('title', 'Document title', pre.title, { req: true, attrs: 'placeholder="e.g. Bachelor of Science in Computer Science"' })}
         ${input('issued_to', 'Graduate full name', pre.issued_to, { req: true })}
-        ${input('matric_number', 'Matric number', m.matric_number, { req: true, attrs: 'style="text-transform:uppercase"' })}
         ${input('programme', 'Programme / course', m.programme || m.course)}
         ${input('degree_class', 'Class of degree', m.degree_class || m.class, { attrs: 'placeholder="e.g. Second Class Upper"' })}
         ${input('faculty', 'Faculty', m.faculty)}
@@ -422,6 +430,46 @@
         <button class="btn" type="submit" id="i-save">${reissueId ? 'Reissue document' : 'Issue document'}</button>
         <a class="btn secondary" href="${reissueId ? '#/doc/' + encodeURIComponent(reissueId) : '#/documents'}">Cancel</a></div>
       </form></div>`;
+    // Matric lookup: fill the form from the school's student records
+    const SOURCE = { sis: 'the student information system', list: 'the uploaded student list' };
+    const FILL = { issued_to: 'full_name', programme: 'programme', degree_class: 'degree_class', faculty: 'faculty',
+                   department: 'department', entry_year: 'entry_year', graduation_year: 'graduation_year' };
+    let looked = '';
+    const lookup = async () => {
+      const mv = $('i-matric_number').value.trim().toUpperCase();
+      const box = $('i-rec');
+      if (!mv) { box.className = 'alert'; return; }
+      looked = mv;
+      box.className = 'alert show info'; box.textContent = 'Looking up ' + mv + '...';
+      try {
+        const r = await api('/students/lookup?' + qs({ matric: mv, doc_type: $('i-doc_type').value }));
+        if (looked !== mv) return;
+        const sisNote = r.sis_error ? ` The SIS couldn't be reached (${r.sis_error}).` : '';
+        if (!r.found) {
+          box.className = 'alert show ' + (r.require_registered ? 'err' : 'warn');
+          box.textContent = !r.has_records && !r.require_registered
+            ? 'No student records to check against yet. An Owner can connect the SIS or upload a student list under Student records.'
+            : `No student with matric number ${mv} in ${S.tenant.name}'s student records.${sisNote}` +
+              (r.require_registered ? ' Only registered students can be issued documents, so check the number.' : ' You can still issue, but check the details carefully.');
+          return;
+        }
+        const rec = r.record;
+        // The record is the authority: a field it leaves out is cleared, not kept from an earlier student
+        for (const [field, key] of Object.entries(FILL)) $('i-' + field).value = rec[key] || '';
+        const t = $('i-title');
+        if (!t.value && rec.programme && ['Certificate', 'Diploma'].includes($('i-doc_type').value)) t.value = rec.programme;
+        const status = rec.status ? rec.status.charAt(0).toUpperCase() + rec.status.slice(1) : 'not given';
+        const head = `Found in ${SOURCE[r.source] || 'student records'}: ${rec.full_name}, status ${status}. The form has been filled from the record.`;
+        if (r.check.error) { box.className = 'alert show err'; box.textContent = `${head} ${r.check.error}`; }
+        else if (r.check.warning) { box.className = 'alert show warn'; box.textContent = `${head} ${r.check.warning}`; }
+        else { box.className = 'alert show ok'; box.textContent = head + sisNote; }
+      } catch (err) { box.className = 'alert show err'; box.textContent = err.message; }
+    };
+    $('i-look').onclick = lookup;
+    $('i-matric_number').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); lookup(); } };
+    $('i-matric_number').onchange = () => { if ($('i-matric_number').value.trim().toUpperCase() !== looked) lookup(); };
+    $('i-doc_type').onchange = () => { if (looked) lookup(); };
+
     $('issue-form').onsubmit = async e => {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(e.target));
@@ -758,6 +806,106 @@
         : 'New accounts need a claim code. Existing accounts that never used one must enter a code before they see documents again.',
       onSubmit: () => save({ student_claim_required: !d.student_claim_required }, 'Saved.'),
     });
+  };
+
+  // ── Student records: SIS connection and uploaded lists ─────────────────
+  V['/students'] = async (el) => {
+    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can manage student records.</div>'; return; }
+    const d = await api('/students');
+    const sis = d.sis;
+    const AUTH = { bearer: 'API token (Bearer)', basic: 'Username and password (Basic)', none: 'None (testing only)' };
+    const sisState = !sis.configured ? 'Not connected.'
+      : `${sis.enabled ? 'Switched on' : 'Saved but switched off'}.` +
+        (sis.last_ok_at ? ` Last answered ${fmtTime(sis.last_ok_at)}.` : ' Not reached yet.');
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Student records</h1><div class="sub">Who ${esc(S.tenant.name)} can issue documents to, and the details printed on them</div></div></div>
+      <div class="panel"><h2>Registered students only</h2>
+        <p class="muted">When issuing, staff type a matric number and the form fills from your student records. With this on, a document can only be issued to a matric number found there, with the same name. Awards (certificates, diplomas, completion) always need status Graduated or Completed when the record gives a status. Transcripts and other records of study can be issued at any stage of study.</p>
+        <p>Registered students only is <strong>${d.require_registered ? 'on' : 'off'}</strong>.</p>
+        <button class="btn${d.require_registered ? ' secondary' : ''}" id="st-req">${d.require_registered ? 'Turn off' : 'Turn on'}</button></div>
+      <div class="panel"><h2>Student information system (SIS)</h2>
+        <p class="muted">Looked up live, one matric number at a time, whenever staff issue. Nothing is copied or stored from it. Your SIS team implements the UniVerify SIS API (one read-only address that returns a student by matric number).</p>
+        <div class="notice${sis.last_error ? ' bad' : sis.enabled ? ' ok' : ''}">${esc(sisState)}${sis.last_error ? ' Last error: ' + esc(sis.last_error) : ''}</div>
+        <form id="sis-f"><div class="form-grid">
+          <div class="field full"><label for="sis-url">SIS address</label><input type="text" id="sis-url" name="base_url" value="${esc(sis.base_url || '')}" placeholder="https://sis.example.edu.ng/univerify"/>
+            <div class="hint">UniVerify calls this address followed by /students/ and the matric number.</div></div>
+          <div class="field"><label for="sis-auth">Sign-in</label><select id="sis-auth" name="auth_type">
+            ${Object.entries(AUTH).map(([k, v]) => `<option value="${k}"${(sis.auth_type || 'bearer') === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
+          <div class="field"><label for="sis-secret">Token or username:password</label><input id="sis-secret" name="secret" type="password" autocomplete="new-password"
+            placeholder="${sis.has_secret ? 'Saved. Leave empty to keep it' : ''}"/><div class="hint">Stored encrypted. Nobody can read it back.</div></div>
+          <div class="field"><label for="sis-to">Wait for an answer (seconds)</label><input type="text" id="sis-to" name="timeout" inputmode="numeric" value="${esc(Math.round((sis.timeout_ms || 5000) / 1000))}"/></div>
+          <div class="field"><label>&nbsp;</label><label style="font-weight:400"><input type="checkbox" name="enabled"${sis.enabled || !sis.configured ? ' checked' : ''}/> Use it when issuing</label></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Save connection</button>
+          ${sis.configured ? '<button class="btn secondary" type="button" id="sis-test">Test with a matric number</button><button class="btn danger" type="button" id="sis-del">Remove</button>' : ''}</div>
+        </form></div>
+      <div class="panel"><h2>Uploaded student lists</h2>
+        <p class="muted">For students the SIS doesn't answer for, or before it's connected: the convocation list, or this month's transcript requests. Only the details printed on documents and the student's status are kept. Each record is deleted 30 days after its first document is issued, and after 180 days at most.</p>
+        <p>${esc(d.records.total)} student record${d.records.total === 1 ? '' : 's'} held, ${esc(d.records.waiting)} not yet issued.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn" id="st-up">Upload list</button>
+          <a class="btn secondary" href="/app-api/students/template.csv">Download template</a></div>
+        ${d.lists.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Rows</th><th>Still held</th><th>Issued</th><th>Uploaded</th><th></th></tr></thead><tbody>
+          ${d.lists.map(l => `<tr><td>${esc(l.file_name)}</td><td>${esc(l.row_count)}</td><td>${esc(l.remaining)}</td><td>${esc(l.issued)}</td>
+            <td>${esc(fmtTime(l.created_at))}<br/><span class="muted">${esc(l.uploaded_by || '')}</span></td>
+            <td><button class="btn secondary sm" data-del-list="${esc(l.id)}" data-name="${esc(l.file_name)}">Delete</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">No lists uploaded.</div>'}</div>`;
+
+    $('st-req').onclick = () => modal({
+      title: d.require_registered ? 'Stop requiring registered students' : 'Require registered students',
+      submit: d.require_registered ? 'Turn off' : 'Turn on', danger: d.require_registered,
+      lead: d.require_registered
+        ? 'Staff will be able to issue to matric numbers that aren\'t in your student records. They still see a warning.'
+        : 'Documents can only be issued to matric numbers found in the SIS or an uploaded list, with a matching name. Check the SIS answers or a list is uploaded first.',
+      onSubmit: async () => { await api('/students/settings', { method: 'PATCH', body: { require_registered: !d.require_registered } }); toast('Saved.'); render(); },
+    });
+    $('sis-f').onsubmit = async e => {
+      e.preventDefault();
+      const f = e.target.elements;
+      try {
+        await api('/students/sis', { method: 'PUT', body: { base_url: f.base_url.value.trim(), auth_type: f.auth_type.value,
+          secret: f.secret.value, timeout_ms: (parseInt(f.timeout.value) || 5) * 1000, enabled: f.enabled.checked } });
+        toast('SIS connection saved.'); render();
+      } catch (err) { toast(err.message); }
+    };
+    if ($('sis-test')) $('sis-test').onclick = () => modal({
+      title: 'Test the SIS connection', submit: 'Test',
+      lead: 'UniVerify asks the SIS for one student, exactly as it does when issuing. Nothing is issued or stored.',
+      fields: [{ name: 'matric', label: 'Matric number' }],
+      onSubmit: async v => {
+        const r = await api('/students/sis/test', { method: 'POST', body: { matric: v.matric } });
+        const a = $('m-msg');
+        if (!r.ok) { a.className = 'alert show err'; a.textContent = 'The SIS did not give a usable answer: ' + r.error; }
+        else if (!r.found) { a.className = 'alert show warn'; a.textContent = 'Connected. The SIS says it has no student with that matric number.'; }
+        else {
+          const x = r.record;
+          a.className = 'alert show ok';
+          a.textContent = `Connected. ${x.full_name}, ${x.programme || 'no programme given'}, status ${x.status || 'not given'}.`;
+        }
+        return true;
+      },
+    });
+    if ($('sis-del')) $('sis-del').onclick = () => modal({
+      title: 'Remove the SIS connection', submit: 'Remove', danger: true,
+      lead: 'Lookups will use uploaded lists only. The saved token is deleted.',
+      onSubmit: async () => { await api('/students/sis', { method: 'DELETE' }); toast('SIS connection removed.'); render(); },
+    });
+    $('st-up').onclick = () => modal({
+      title: 'Upload student list', submit: 'Upload',
+      lead: 'One row per student. A student already held from an earlier list is replaced by this one.',
+      fields: [{ name: 'csv', label: 'CSV file', type: 'file', accept: '.csv,text/csv', asText: true, maxKb: 1500,
+                 hint: 'Required columns: matric_number, full_name. Add status so awards can be checked. In Excel use File, Save As, CSV UTF-8.' }],
+      onSubmit: async v => {
+        if (!v.csv) throw new Error('Choose a CSV file.');
+        const r = await api('/students/lists', { method: 'POST', body: { csv: v.csv, file_name: v.csv_name } });
+        toast(`${r.added} student${r.added === 1 ? '' : 's'} added${r.skipped_count ? `, ${r.skipped_count} row${r.skipped_count === 1 ? '' : 's'} skipped (first: row ${r.skipped[0].row}, ${r.skipped[0].error})` : ''}.`);
+        render();
+      },
+    });
+    el.querySelectorAll('[data-del-list]').forEach(b => b.onclick = () => modal({
+      title: 'Delete student list', submit: 'Delete', danger: true,
+      lead: `Deletes ${b.dataset.name} and every student record that came from it. Documents already issued are not affected.`,
+      onSubmit: async () => { await api('/students/lists/' + encodeURIComponent(b.dataset.delList), { method: 'DELETE' }); toast('List deleted.'); render(); },
+    }));
   };
 
   // ── Print jobs (Phase 4b) ───────────────────────────────────────────────
