@@ -77,7 +77,7 @@ async function tenantResolver(req, res, next) {
           <head><title>Not Found — UniVerify</title></head>
           <body style="font-family:Arial;text-align:center;padding:80px;color:#333">
             <h1 style="color:#1A3A5C">UniVerify</h1>
-            <p>No institution found for <strong>${subdomain}.univerify.ng</strong></p>
+            <p>No institution found for <strong>${String(subdomain).replace(/[^a-z0-9-]/gi, '')}.univerify.ng</strong></p>
             <p style="color:#888">If you are an institution looking to get started, contact
               <a href="mailto:info@akeenalee.com">info@akeenalee.com</a></p>
           </body>
