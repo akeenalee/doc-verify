@@ -87,7 +87,9 @@ app.use(session({
   cookie: {
     secure:   process.env.NODE_ENV === 'production',
     httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    // lax: cookies still go on top-level navigations (Paystack returning the
+    // payer), but not on cross-site POSTs, which closes CSRF on bodyless actions
+    sameSite: 'lax',
     maxAge:   8 * 60 * 60 * 1000,
   },
 }));
@@ -109,6 +111,17 @@ app.use('/demo', demoRouter);
 app.use('/admin-api', adminRouter);
 
 // Staff app API (per-tenant staff accounts, roles and TOTP)
+// Staff writes must come from the workspace's own origin
+app.use('/app-api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const o = req.headers.origin;
+  if (o) {
+    let host = null;
+    try { host = new URL(o).host; } catch (_) { /* bad Origin */ }
+    if (host !== req.get('host')) return res.status(403).json({ error: 'Cross-site request refused.' });
+  }
+  next();
+});
 app.use('/app-api/auth', staffAuthRouter);
 app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));

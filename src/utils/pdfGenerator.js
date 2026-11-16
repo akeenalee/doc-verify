@@ -118,7 +118,7 @@ async function generatePDF(docData, outputStream) {
 
 // ── ACADEMIC PDF (original logic unchanged) ─────────────────────────────────
 async function generateAcademicPDF(docData, outputStream, docTypeLower) {
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData);
 
   const doc = new PDFDocument({
     size: 'A4',
@@ -350,7 +350,7 @@ async function generateAcademicPDF(docData, outputStream, docTypeLower) {
 
 // ── GOVERNMENT / MDA PDF ─────────────────────────────────────────────────────
 async function generateGovtPDF(docData, outputStream, docTypeLower) {
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData);
 
   const cfg = getGovtConfig(docTypeLower) || {
     officeLabel: 'OFFICE OF THE DIRECTOR GENERAL',

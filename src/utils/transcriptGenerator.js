@@ -4,7 +4,7 @@ const { loadBrand, drawSignature, drawLogo, stampSpecimen } = require('./brandin
 
 async function generateTranscript(docData, outputStream) {
   const brand = docData._brand || await loadBrand(docData);
-  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData.doc_id, docData);
+  const { buffer: qrBuffer, url: verifyUrl } = await generateQRBuffer(docData);
 
   const doc = new PDFDocument({
     size: 'A4',

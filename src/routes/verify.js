@@ -3,42 +3,30 @@ const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
-const { verifyDocSignature, signDocId, tenantBaseUrl, tenantSubdomain,
+const { verifyDocSignature, tenantBaseUrl, tenantSubdomain,
         signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
+const { parseSig, checkV2, signDocument } = require('../utils/signing');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
-// GET /verify?doc=DOC-XXXX&sig=HMAC16
+// GET /verify?doc=DOC-XXXX&sig=2.<kid>.<tag> (or a v1 16-hex sig)
 router.get('/', async (req, res) => {
   req._tenantId = req.tenant?.id || null;
   const { doc, paid, sig } = req.query;
   if (!doc) return res.status(400).send(renderPage('Invalid Request', 'No document ID provided.', 'error', null));
-
-  // HMAC signature validation
-  // Backwards compatible: URLs without sig still work (existing printed QR codes)
-  // Once all QR codes are regenerated, enforce sig required
-  if (sig && !verifyDocSignature(doc, sig)) {
-    const tip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-    await logScan(doc, tip, req.headers['user-agent'] || '', 'tampered', 'none', req._tenantId);
-    return res.status(400).send(renderPage(
-      'Invalid Verification Link',
-      'This verification link has been tampered with and cannot be trusted. ' +
-      'Please scan the QR code directly from the original physical document.',
-      'error',
-      null
-    ));
-  }
 
   const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || '';
 
   try {
     const result = await pool.query(
-      `SELECT id, doc_id, title, issued_to, issued_by, doc_type,
-              issue_date, expiry_date, status, metadata, tenant_id, superseded_by
-       FROM documents WHERE doc_id = $1`,
+      `SELECT d.id, d.doc_id, d.title, d.issued_to, d.issued_by, d.doc_type,
+              d.issue_date, d.expiry_date, d.status, d.metadata, d.tenant_id, d.superseded_by,
+              COALESCE(t.sig_strict, FALSE) AS sig_strict
+       FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id
+       WHERE d.doc_id = $1`,
       [doc]
     );
 
@@ -46,6 +34,35 @@ router.get('/', async (req, res) => {
       await logScan(doc, ip, userAgent, 'not_found', 'none', req._tenantId);
       return res.send(renderPage('Document Not Found',
         `No record found for ID: <strong>${escHtml(doc)}</strong>.`, 'error', null));
+    }
+
+    // Signature check. v2 links are checked against the stored record, so a
+    // forged link or an edited database row both fail. v1 links (doc ID only)
+    // and unsigned links still work unless the school has turned on strict mode.
+    const parsed = parseSig(sig);
+    let sigOk = null; // null: no signature on the link
+    if (parsed.version === 2) sigOk = (await checkV2(result.rows[0], parsed)) === 'valid';
+    else if (parsed.version === 1) sigOk = verifyDocSignature(doc, sig);
+    else if (parsed.version === -1) sigOk = false;
+    if (sigOk === false) {
+      await logScan(doc, ip, userAgent, 'tampered', 'none', req._tenantId);
+      return res.status(400).send(renderPage(
+        'Invalid Verification Link',
+        'This verification link has been tampered with and cannot be trusted. ' +
+        'Please scan the QR code directly from the original physical document.',
+        'error',
+        null
+      ));
+    }
+    if (result.rows[0].sig_strict && parsed.version !== 2) {
+      await logScan(doc, ip, userAgent, 'old_link', 'none', req._tenantId);
+      return res.status(400).send(renderPage(
+        'Older Verification Code',
+        'This QR code uses an older format that the institution no longer accepts. ' +
+        'Ask the holder for a reissued copy of the document, or contact the institution directly.',
+        'error',
+        null
+      ));
     }
 
     const docData   = result.rows[0];
@@ -128,8 +145,12 @@ router.get('/api/payment-callback', async (req, res) => {
       [reference]
     );
 
-    const cbSig = signDocId(doc_id);
-    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&sig=${cbSig}&paid=${encodeURIComponent(reference)}`);
+    // The payer comes back without the QR's own link, so sign it afresh
+    const d = await pool.query(
+      'SELECT doc_id, tenant_id, doc_type, issue_date, issued_to FROM documents WHERE doc_id = $1', [doc_id]);
+    if (!d.rows.length) return res.redirect('/pay.html?error=invalid_metadata');
+    const cbSig = await signDocument(d.rows[0]);
+    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&sig=${encodeURIComponent(cbSig)}&paid=${encodeURIComponent(reference)}`);
   } catch (err) {
     console.error('Payment callback error:', err);
     res.redirect('/pay.html?error=verification_failed');

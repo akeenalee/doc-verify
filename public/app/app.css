@@ -112,7 +112,7 @@ tr.click:hover td { background: #f8fafc; }
 .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 13px; color: var(--muted); }
 .badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .badge.active, .badge.found { background: var(--ok-bg); color: var(--ok); }
-.badge.revoked, .badge.tampered, .badge.not_found, .badge.disabled { background: var(--bad-bg); color: var(--bad); }
+.badge.revoked, .badge.tampered, .badge.old_link, .badge.not_found, .badge.disabled { background: var(--bad-bg); color: var(--bad); }
 .badge.superseded, .badge.expired, .badge.invited { background: var(--warn-bg); color: var(--warn); }
 .badge.role { background: #eef3fa; color: var(--brand); margin: 0 4px 4px 0; }
 .kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; }
@@ -180,3 +180,6 @@ tr.click:hover td { background: #f8fafc; }
 .bad-text { color: var(--bad); font-size: 13px; }
 .warn-text { color: var(--warn); font-size: 12px; margin-top: 3px; }
 .notice.ok { background: var(--ok-bg); color: var(--ok); }
+
+.claim-code { font-size: 26px; letter-spacing: 3px; text-align: center; padding: 16px; margin: 8px 0 14px;
+  border: 2px dashed var(--brand, #1A3A5C); border-radius: 8px; background: #f7f9fc; user-select: all; }

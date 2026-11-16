@@ -18,7 +18,9 @@ const { requireStaff } = require('../middleware/staffAuth');
 const { logActivity, clientIp } = require('../utils/activity');
 const { parseCsv, toCsv } = require('../utils/csv');
 const { createZip } = require('../utils/zip');
-const { generateDocId, buildVerifyUrl } = require('../utils/docUtils');
+const { generateDocId, buildVerifyUrl, tenantBaseUrl } = require('../utils/docUtils');
+const { issueClaimCode } = require('../utils/claims');
+const { activeKey } = require('../utils/signing');
 const { generatePDF } = require('../utils/pdfGenerator');
 const { loadBrand } = require('../utils/branding');
 const { DOC_TYPES, documentInput } = require('./staffApp');
@@ -135,6 +137,7 @@ async function issueBatch(client, req, batch) {
     prepared.push({ row_no: r.row_no, ...input.values });
   }
 
+  await activeKey(tenant.id); // the school's signing key exists before its first document
   const issued = [];
   for (let i = 0; i < prepared.length; i += CHUNK) {
     let pending = prepared.slice(i, i + CHUNK);
@@ -373,6 +376,41 @@ router.post('/:id/cancel', ISSUERS, async (req, res) => {
   } catch (e) { sendErr(res, e, 'Failed to cancel batch.'); }
 });
 
+// Claim codes for every graduate in an issued batch, as a CSV for the
+// registry to send out. Each run makes fresh codes and voids earlier unused ones.
+router.post('/:id/claim-codes.csv', ISSUERS, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const batch = await loadBatch(req.tenant.id, req.params.id);
+    if (!batch) return res.status(404).json({ error: 'Batch not found.' });
+    if (batch.status !== 'issued') return res.status(409).json({ error: 'Claim codes are available once the batch is issued.' });
+    const docs = (await client.query(
+      `SELECT d.doc_id, d.issued_to, d.metadata->>'matric_number' AS matric, br.row_no
+       FROM documents d JOIN batch_rows br ON br.doc_id = d.doc_id AND br.batch_id = $2
+       WHERE d.tenant_id = $1 AND d.status = 'active' AND COALESCE(d.metadata->>'matric_number', '') <> ''
+       ORDER BY br.row_no`, [req.tenant.id, batch.id])).rows;
+    await client.query('BEGIN');
+    const out = [['row', 'full_name', 'matric_number', 'doc_id', 'claim_code', 'expires', 'portal']];
+    const portal = `${tenantBaseUrl(req.tenant.subdomain)}/student.html`;
+    const seen = new Map();
+    for (const d of docs) {
+      const key = d.matric.trim().toUpperCase();
+      if (!seen.has(key)) seen.set(key, await issueClaimCode(client, req.tenant.id, d.matric, req.staff.id));
+      const c = seen.get(key);
+      out.push([d.row_no, d.issued_to, d.matric, d.doc_id, c.code, new Date(c.expires_at).toISOString().slice(0, 10), portal]);
+    }
+    await client.query('COMMIT');
+    await logActivity(req, { action: 'batch_claim_codes_issued', targetType: 'batch', targetId: batch.id, detail: { count: seen.size } });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="claim-codes-${batch.id.slice(0, 8)}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send('\ufeff' + toCsv(out));
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    sendErr(res, e, 'Failed to create claim codes.');
+  } finally { client.release(); }
+});
+
 // Every PDF in an issued batch, plus a manifest CSV. Streams as it goes.
 router.get('/:id/pdfs.zip', ISSUERS, async (req, res) => {
   try {
@@ -400,7 +438,7 @@ router.get('/:id/pdfs.zip', ISSUERS, async (req, res) => {
       await done;
       const safe = String(d.metadata?.matric_number || d.doc_id).replace(/[^A-Za-z0-9_-]+/g, '-');
       zip.add(`${String(d.row_no).padStart(4, '0')}-${safe}-${d.doc_id}.pdf`, Buffer.concat(chunks));
-      manifest.push([d.row_no, d.doc_id, d.issued_to, d.metadata?.matric_number || '', d.status, buildVerifyUrl(d.doc_id, req.tenant.subdomain)]);
+      manifest.push([d.row_no, d.doc_id, d.issued_to, d.metadata?.matric_number || '', d.status, await buildVerifyUrl(d, req.tenant.subdomain)]);
     }
     zip.add('manifest.csv', '﻿' + toCsv(manifest));
     zip.end();
