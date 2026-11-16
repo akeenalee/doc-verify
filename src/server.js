@@ -61,11 +61,16 @@ app.set('trust proxy', 1);
 // Webhook MUST be before express.json()
 app.use('/api/webhook', webhookRouter);
 
+// Test SIS with dummy students, only when MOCK_SIS_ENABLED=1 (see src/routes/mockSis.js)
+const testSis = require('./routes/mockSis').mockSis();
+if (testSis) app.use('/mock-sis', testSis);
+
 // Logo and signature uploads (base64) and bulk CSV uploads get a larger body
 // limit; everything else keeps the 100 kB default
 const jsonSmall = express.json();
 const jsonLarge = express.json({ limit: '2mb' });
-const largeBody = req => req.path.startsWith('/app-api/settings/') || req.path === '/app-api/batches' || req.path === '/app-api/batches/';
+const largeBody = req => req.path.startsWith('/app-api/settings/') || req.path === '/app-api/batches' || req.path === '/app-api/batches/' ||
+  req.path === '/app-api/students/lists';
 app.use((req, res, next) => (largeBody(req) ? jsonLarge : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: false }));
 
@@ -126,6 +131,7 @@ app.use('/app-api/auth', staffAuthRouter);
 app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));
 app.use('/app-api/print', require('./routes/staffPrint'));
+app.use('/app-api/students', require('./routes/staffStudents'));
 app.use('/app-api', staffAppRouter);
 
 // Institutions use the staff workspace; only the root demo tenant keeps the

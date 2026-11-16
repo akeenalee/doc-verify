@@ -14,6 +14,7 @@ const { createInvite, refreshInvite } = require('../utils/staffInvite');
 const { generateDocId, buildVerifyUrl, generateQRBuffer, tenantBaseUrl } = require('../utils/docUtils');
 const { issueClaimCode, CLAIM_DAYS } = require('../utils/claims');
 const { activeKey } = require('../utils/signing');
+const { registrationCheck, markIssued } = require('../utils/studentRecords');
 const { generatePDF } = require('../utils/pdfGenerator');
 
 const ANY     = requireStaff();
@@ -241,10 +242,16 @@ router.post('/documents', ISSUERS, async (req, res) => {
   if (input.errors) return res.status(400).json({ error: input.errors.join(' ') });
   const client = await pool.connect();
   try {
-    const doc = await insertDocument(client, req.tenant, req.staff, input.values);
+    const v = input.values;
+    const check = await registrationCheck(req.tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
+    if (check.errors.length) return res.status(422).json({ error: check.errors.join(' '), warnings: check.warnings });
+    const doc = await insertDocument(client, req.tenant, req.staff, v);
+    await markIssued(pool, req.tenant.id, [v.metadata.matric_number]);
     await logActivity(req, { action: 'document_issued', targetType: 'document', targetId: doc.doc_id,
-      detail: { doc_type: doc.doc_type, matric_number: input.values.metadata.matric_number } });
-    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain) });
+      detail: { doc_type: doc.doc_type, matric_number: v.metadata.matric_number, record_source: check.source,
+                warnings: check.warnings.length ? check.warnings : undefined } });
+    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain),
+                           record_source: check.source, warnings: check.warnings });
   } catch (e) { sendErr(res, e, 'Failed to issue document.'); }
   finally { client.release(); }
 });
@@ -292,6 +299,12 @@ router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
   if (!note) return res.status(400).json({ error: 'Say what was corrected.' });
   const input = documentInput(req.body, req.tenant);
   if (input.errors) return res.status(400).json({ error: input.errors.join(' ') });
+  let check;
+  try {
+    const v = input.values;
+    check = await registrationCheck(req.tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
+  } catch (e) { return sendErr(res, e, 'Failed to check student records.'); }
+  if (check.errors.length) return res.status(422).json({ error: check.errors.join(' '), warnings: check.warnings });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -311,9 +324,11 @@ router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
     await client.query('COMMIT');
     await logActivity(req, { action: 'document_superseded', targetType: 'document', targetId: req.params.docId,
       detail: { replaced_by: doc.doc_id, note } });
+    await markIssued(pool, req.tenant.id, [input.values.metadata.matric_number]);
     await logActivity(req, { action: 'document_reissued', targetType: 'document', targetId: doc.doc_id,
-      detail: { replaces: req.params.docId, note } });
-    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain) });
+      detail: { replaces: req.params.docId, note, record_source: check.source } });
+    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain),
+                           record_source: check.source, warnings: check.warnings });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     sendErr(res, e, 'Failed to reissue document.');
