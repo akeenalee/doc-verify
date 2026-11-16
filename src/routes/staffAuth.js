@@ -6,7 +6,7 @@ const router  = express.Router();
 const QRCode  = require('qrcode');
 const pool    = require('../db/pool');
 const { loginLimiter } = require('../middleware/rateLimiter');
-const { requireStaff, clearStaff } = require('../middleware/staffAuth');
+const { requireStaff, clearStaff, ROLES } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
 const A = require('../utils/staffAuth');
 
@@ -136,7 +136,7 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/me', requireStaff(), async (req, res) => {
+router.get('/me', requireStaff(...ROLES), async (req, res) => {
   const t = req.tenant;
   const logo_version = await require('../utils/branding').logoVersion(t.id);
   res.json({
@@ -147,7 +147,7 @@ router.get('/me', requireStaff(), async (req, res) => {
   });
 });
 
-router.post('/password', requireStaff(), async (req, res) => {
+router.post('/password', requireStaff(...ROLES), async (req, res) => {
   const { current_password, new_password } = req.body;
   const problem = A.passwordProblem(new_password);
   if (problem) return res.status(400).json({ error: problem });

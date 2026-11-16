@@ -125,6 +125,7 @@ app.use('/app-api', (req, res, next) => {
 app.use('/app-api/auth', staffAuthRouter);
 app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));
+app.use('/app-api/print', require('./routes/staffPrint'));
 app.use('/app-api', staffAppRouter);
 
 // Institutions use the staff workspace; only the root demo tenant keeps the

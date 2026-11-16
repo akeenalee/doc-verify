@@ -5,7 +5,9 @@
 const pool = require('../db/pool');
 
 const STAFF_IDLE_MS = 8 * 60 * 60 * 1000; // 8 hours
-const ROLES = ['owner', 'officer', 'approver', 'auditor'];
+const ROLES = ['owner', 'officer', 'approver', 'auditor', 'vendor'];
+// Everyone but an outside print vendor, who only sees print jobs
+const INTERNAL = ['owner', 'officer', 'approver', 'auditor'];
 
 function wantsJson(req) {
   return req.xhr || req.path.startsWith('/app-api') || req.originalUrl.startsWith('/app-api') ||
@@ -18,9 +20,11 @@ function clearStaff(session) {
   delete session.staffLastActivity;
 }
 
-// requireStaff()                 any active staff user of this tenant
+// requireStaff()                 any active internal staff user of this tenant
 // requireStaff('owner', 'auditor') at least one of these roles
+// requireStaff(...ROLES)          anyone, including a print vendor
 function requireStaff(...allowed) {
+  if (!allowed.length) allowed = INTERNAL;
   return async (req, res, next) => {
     const s = req.session;
     const deny = (status, error) => wantsJson(req)
@@ -59,4 +63,4 @@ function requireStaff(...allowed) {
   };
 }
 
-module.exports = { requireStaff, clearStaff, ROLES, STAFF_IDLE_MS };
+module.exports = { requireStaff, clearStaff, ROLES, INTERNAL, STAFF_IDLE_MS };

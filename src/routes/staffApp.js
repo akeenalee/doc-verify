@@ -105,7 +105,7 @@ function sendErr(res, e, fallback) {
 }
 
 // ── Reference data ──────────────────────────────────────────────────────────
-router.get('/meta', ANY, (req, res) => {
+router.get('/meta', requireStaff(...ROLES), (req, res) => {
   res.json({ doc_types: DOC_TYPES, revoke_reasons: REVOKE_REASONS, roles: ROLES, restore_days: RESTORE_DAYS, claim_days: CLAIM_DAYS });
 });
 
@@ -137,8 +137,43 @@ router.get('/dashboard', ANY, async (req, res) => {
          LEFT JOIN documents d ON d.doc_id = vl.doc_id AND d.tenant_id = vl.tenant_id
          WHERE vl.tenant_id = $1 ORDER BY vl.verified_at DESC LIMIT 8`, [t]),
     ]);
-    res.json({ documents: docs.rows[0], scans: scans.rows[0], recent_scans: recent.rows });
+    const alerts = await pool.query(
+      'SELECT COUNT(*)::int AS n FROM scan_alerts WHERE tenant_id = $1 AND acknowledged_at IS NULL', [t]);
+    res.json({ documents: docs.rows[0], scans: scans.rows[0], recent_scans: recent.rows, open_alerts: alerts.rows[0].n });
   } catch (e) { sendErr(res, e, 'Failed to load dashboard.'); }
+});
+
+// ── Scan alerts ─────────────────────────────────────────────────────────────
+router.get('/alerts', ANY, async (req, res) => {
+  try {
+    const open = req.query.status !== 'all';
+    const r = await pool.query(
+      `SELECT a.id, a.doc_id, a.kind, a.detail, a.created_at, a.acknowledged_at, a.note,
+              u.email AS acknowledged_by, d.issued_to, d.doc_type, d.status AS doc_status,
+              (SELECT COUNT(*)::int FROM verification_log v WHERE v.doc_id = a.doc_id
+                 AND v.verified_at > NOW() - interval '24 hours') AS scans_24h
+       FROM scan_alerts a
+       LEFT JOIN tenant_users u ON u.id = a.acknowledged_by
+       LEFT JOIN documents d ON d.doc_id = a.doc_id AND d.tenant_id = a.tenant_id
+       WHERE a.tenant_id = $1 ${open ? 'AND a.acknowledged_at IS NULL' : ''}
+       ORDER BY a.created_at DESC LIMIT 200`, [req.tenant.id]);
+    res.json({ alerts: r.rows });
+  } catch (e) { sendErr(res, e, 'Failed to load alerts.'); }
+});
+
+router.post('/alerts/:id/acknowledge', ANY, async (req, res) => {
+  try {
+    const note = clean(req.body.note, 500);
+    if (!note) return res.status(400).json({ error: 'Say what you checked or did.' });
+    const r = await pool.query(
+      `UPDATE scan_alerts SET acknowledged_at = NOW(), acknowledged_by = $3, note = $4
+       WHERE id = $1 AND tenant_id = $2 AND acknowledged_at IS NULL RETURNING doc_id, kind`,
+      [String(req.params.id).replace(/\D/g, '') || 0, req.tenant.id, req.staff.id, note]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Alert not found or already handled.' });
+    await logActivity(req, { action: 'scan_alert_acknowledged', targetType: 'document', targetId: r.rows[0].doc_id,
+      detail: { kind: r.rows[0].kind, note } });
+    res.json({ ok: true });
+  } catch (e) { sendErr(res, e, 'Failed to update the alert.'); }
 });
 
 // ── Documents ───────────────────────────────────────────────────────────────
@@ -301,6 +336,12 @@ router.get('/documents/:docId/qr', ISSUERS, async (req, res) => {
   try {
     const doc = await loadDoc(req.tenant.id, req.params.docId);
     if (!doc) return res.status(404).json({ error: 'Document not found.' });
+    if (req.query.format === 'svg') {
+      const svg = await QRCode.toString(await buildVerifyUrl(doc, req.tenant.subdomain), { type: 'svg', errorCorrectionLevel: 'H', margin: 4 });
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Content-Disposition', `attachment; filename="qr-${doc.doc_id}.svg"`);
+      return res.send(svg);
+    }
     let buffer;
     if (req.query.size === 'print') {
       buffer = await QRCode.toBuffer(await buildVerifyUrl(doc, req.tenant.subdomain),
@@ -402,6 +443,8 @@ router.get('/activity', OVERSIGHT, async (req, res) => {
 function parseRoles(roles) {
   const list = Array.isArray(roles) ? [...new Set(roles.map(String))] : [];
   if (!list.length || !list.every(r => ROLES.includes(r))) return null;
+  // A print vendor is an outside company: the role can't be mixed with staff roles
+  if (list.includes('vendor') && list.length > 1) return null;
   return list;
 }
 
@@ -424,7 +467,7 @@ router.get('/users', OWNER, async (req, res) => {
 
 router.post('/users', OWNER, async (req, res) => {
   const roles = parseRoles(req.body.roles);
-  if (!roles) return res.status(400).json({ error: 'Pick at least one valid role.' });
+  if (!roles) return res.status(400).json({ error: 'Pick at least one valid role. Print vendor can\'t be combined with other roles.' });
   try {
     const out = await createInvite(req.tenant, origin(req), { email: req.body.email, full_name: req.body.full_name,
       roles, invitedBy: req.staff.email });
@@ -435,7 +478,7 @@ router.post('/users', OWNER, async (req, res) => {
 
 router.patch('/users/:id/roles', OWNER, async (req, res) => {
   const roles = parseRoles(req.body.roles);
-  if (!roles) return res.status(400).json({ error: 'Pick at least one valid role.' });
+  if (!roles) return res.status(400).json({ error: 'Pick at least one valid role. Print vendor can\'t be combined with other roles.' });
   try {
     if (!roles.includes('owner') && await activeOwnerCount(req.tenant.id, req.params.id) === 0)
       return res.status(409).json({ error: 'The institution must keep at least one active Owner.' });
