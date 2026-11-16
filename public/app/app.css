@@ -58,6 +58,8 @@ textarea { min-height: 70px; resize: vertical; }
 .alert.err { background: var(--bad-bg); color: var(--bad); }
 .alert.ok { background: var(--ok-bg); color: var(--ok); }
 .alert.info { background: #eef3fa; color: var(--brand); }
+.alert.warn { background: var(--warn-bg); color: var(--warn); }
+.lookup-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
 
 /* ── App shell ────────────────────────────────────────────────────── */
 .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
