@@ -6,17 +6,38 @@ const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireAdminAuth } = require('../middleware/adminAuth');
 const tenantsRouter = require('./tenants');
 
-const ADMIN_USER = process.env.ADMIN_USER || 'iladmin';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'IL@Admin2026!';
+const { credential, safeEqual, adminTotpSecret, verifyAdminTotp } = require('../utils/sharedCreds');
 
-// POST /admin-api/login — IL super admin only, not tenant-scoped
+// Defaults work in development only; production needs ADMIN_USER and ADMIN_PASS set
+const ADMIN_USER = credential('ADMIN_USER', 'iladmin') || 'iladmin';
+const ADMIN_PASS = credential('ADMIN_PASS', 'IL@Admin2026!');
+if (!ADMIN_PASS) console.error('ADMIN_PASS is not set: IL admin sign-in is disabled until it is.');
+if (process.env.NODE_ENV === 'production' && !adminTotpSecret())
+  console.warn('ADMIN_TOTP_SECRET is not set: IL admin sign-in has no second factor. Run node scripts/admin-totp-setup.js.');
+
+// POST /admin-api/login — IL super admin only, not tenant-scoped.
+// Password, then (when ADMIN_TOTP_SECRET is set) a 6-digit authenticator code.
 router.post('/login', loginLimiter, (req, res) => {
-  const { username, password } = req.body;
-  if (username !== ADMIN_USER || password !== ADMIN_PASS)
+  const { username, password, code } = req.body || {};
+  if (!ADMIN_PASS) return res.status(503).json({ error: 'Admin sign-in is not configured on this server.' });
+  if (!safeEqual(username, ADMIN_USER) || !safeEqual(password, ADMIN_PASS))
     return res.status(401).json({ error:'Invalid credentials.' });
-  req.session.adminAuth = true;
-  req.session.tenantId  = req.tenant?.id; // scope admin to current tenant
-  res.json({ success:true });
+  if (adminTotpSecret()) {
+    if (!code) return res.status(401).json({ totp_required: true, error: 'Enter the 6-digit code from your authenticator app.' });
+    if (!verifyAdminTotp(code)) return res.status(401).json({ totp_required: true, error: 'That code is wrong or already used. Wait for the next one.' });
+  }
+  // New session id on sign-in (fixation defence); keep a demo session if one is open
+  const keep = {};
+  for (const k of ['demoAuth', 'demoName', 'lastDemoActivity', 'staffUserId', 'staffTenantId', 'staffLastActivity'])
+    if (req.session[k] !== undefined) keep[k] = req.session[k];
+  req.session.regenerate(err => {
+    if (err) return res.status(500).json({ error: 'Could not start a session.' });
+    Object.assign(req.session, keep);
+    req.session.adminAuth = true;
+    req.session.tenantId  = req.tenant?.id; // scope admin to current tenant
+    req.session.lastAdminActivity = Date.now();
+    res.json({ success:true });
+  });
 });
 
 router.post('/logout', (req, res) => {

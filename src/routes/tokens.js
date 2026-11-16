@@ -127,8 +127,10 @@ router.get('/log', requireStudentAuth, async (req, res) => {
     if (!docIds.length) return res.json({ logs:[], total:0 });
 
     const logs = await pool.query(
-      `SELECT vl.id, vl.doc_id, vl.verified_at, vl.ip_address,
-              vl.user_agent, vl.result, vl.payment_method,
+      // Verifiers' IP addresses and browsers are their personal data: the
+      // graduate sees when and roughly where (city), never the IP itself
+      `SELECT vl.id, vl.doc_id, vl.verified_at, vl.geo_location AS location,
+              vl.result, vl.payment_method,
               d.title, d.doc_type
        FROM verification_log vl
        LEFT JOIN documents d ON d.doc_id=vl.doc_id

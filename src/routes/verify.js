@@ -447,7 +447,7 @@ function renderPage(pageTitle, message, state, docData) {
             var lib = window.pdfjsLib;
             if (!lib) return;
             lib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
-            lib.getDocument({ url: '${docData._previewUrl}', isEvalSupported: false })
+            lib.getDocument({ url: ${JSON.stringify(docData._previewUrl).replace(/</g, '\\u003c')}, isEvalSupported: false })
               .promise.then(function (pdf) {
                 wrap.remove();
                 pages.style.display = 'block';
