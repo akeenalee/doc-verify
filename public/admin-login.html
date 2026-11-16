@@ -79,6 +79,10 @@
   <input type="text" id="username" placeholder="Demo username" autocomplete="username"/>
   <label>Password</label>
   <input type="password" id="password" placeholder="Demo password" autocomplete="current-password"/>
+  <div id="code-wrap" style="display:none">
+    <label>Authenticator code</label>
+    <input type="text" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code"/>
+  </div>
 
   <button class="btn" id="login-btn">Access Demo Platform</button>
   <p class="err" id="err-msg"></p>
@@ -91,7 +95,9 @@
 </div>
 
 <script>
-  const redirect = new URLSearchParams(window.location.search).get('redirect') || '/admin';
+  // Only same-site paths: never another origin or a javascript: URL
+  const safePath = (p, d) => (typeof p === 'string' && /^\/(?![\/\\])/.test(p)) ? p : d;
+  const redirect = safePath(new URLSearchParams(window.location.search).get('redirect'), '/admin');
 
   // Check for error param and show appropriate screen
   (function() {
@@ -134,6 +140,7 @@
       role:      document.getElementById('role').value.trim(),
       username:  document.getElementById('username').value.trim(),
       password:  document.getElementById('password').value,
+      code:      document.getElementById('code').value.trim(),
     };
 
     if (!body.username || !body.password) {
@@ -155,6 +162,13 @@
 
       if (res.ok && data.success) {
         window.location.href = redirect;
+      } else if (data.totp_required) {
+        document.getElementById('code-wrap').style.display = '';
+        document.getElementById('code').focus();
+        err.textContent = data.error;
+        err.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Verify code';
       } else {
         err.textContent = data.error || 'Invalid credentials. Please try again.';
         err.classList.add('show');
@@ -171,6 +185,9 @@
 
   document.getElementById('login-btn').addEventListener('click', doLogin);
   document.getElementById('password').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('code').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
   });
 </script>

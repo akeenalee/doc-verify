@@ -90,7 +90,9 @@
 </div>
 
 <script>
-  const redirect = new URLSearchParams(window.location.search).get('redirect') || '/';
+  // Only same-site paths: never another origin or a javascript: URL
+  const safePath = (p, d) => (typeof p === 'string' && /^\/(?![\/\\])/.test(p)) ? p : d;
+  const redirect = safePath(new URLSearchParams(window.location.search).get('redirect'), '/');
 
   // Check for error param and show appropriate screen
   (function() {

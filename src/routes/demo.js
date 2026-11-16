@@ -5,8 +5,11 @@ const nodemailer = require('nodemailer');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireDemoAuth } = require('../middleware/demoAuth');
 
-const DEMO_USER = process.env.DEMO_USER || 'univerify';
-const DEMO_PASS = process.env.DEMO_PASS || 'Demo@2026!';
+const { credential, safeEqual } = require('../utils/sharedCreds');
+// Defaults work in development only; production needs DEMO_USER and DEMO_PASS set
+const DEMO_USER = credential('DEMO_USER', 'univerify') || 'univerify';
+const DEMO_PASS = credential('DEMO_PASS', 'Demo@2026!');
+if (!DEMO_PASS) console.error('DEMO_PASS is not set: demo sign-in is disabled until it is.');
 
 const transporter = nodemailer.createTransport({
   host:       process.env.SMTP_HOST || 'smtp.zoho.com',
@@ -109,7 +112,8 @@ router.post('/login', loginLimiter, async (req, res) => {
   const { username, password, full_name, email, company, role } = req.body;
   const tenantId = req.tenant?.id;
 
-  if (username !== DEMO_USER || password !== DEMO_PASS)
+  if (!DEMO_PASS) return res.status(503).json({ error:'Demo sign-in is not configured on this server.' });
+  if (!safeEqual(username, DEMO_USER) || !safeEqual(password, DEMO_PASS))
     return res.status(401).json({ error:'Invalid credentials.' });
 
   const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;

@@ -216,6 +216,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`UniVerify running on http://localhost:${PORT}`);
+  require('./utils/retention').scheduleRetention();
 });
 
 module.exports = app;

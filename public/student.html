@@ -187,7 +187,6 @@
 
 <script>
 const BASE = window.location.origin;
-const locCache = {};
 let selectedBundle = null;
 
 const params = new URLSearchParams(window.location.search);
@@ -423,15 +422,10 @@ async function loadLog() {
         <td><strong>${esc(l.title || l.doc_id)}</strong><div class="muted">${esc(l.doc_type || '')}</div></td>
         <td><span class="badge verified">Verified</span></td>
         <td>${payBadge}</td>
-        <td class="muted" id="sloc-${l.id}">...</td>
+        <td class="muted">${esc(l.location || 'Unknown')}</td>
         <td style="font-size:12px;white-space:nowrap">${fmtDateTime(l.verified_at)}</td>
       </tr>`;
     }).join('');
-    logs.forEach(async l => {
-      const loc = await getLocation(l.ip_address);
-      const el  = document.getElementById(`sloc-${l.id}`);
-      if (el) el.textContent = loc;
-    });
   } catch (e) {
     body.innerHTML = '<tr><td colspan="5" class="empty">Failed to load log.</td></tr>';
   }
@@ -459,17 +453,6 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
     errEl.textContent = e.message; errEl.classList.add('show');
   } finally { btn.disabled = false; btn.textContent = 'Save preferences'; }
 });
-
-async function getLocation(ip) {
-  if (!ip || ip === '127.0.0.1' || ip.startsWith('::')) return 'Local';
-  if (locCache[ip]) return locCache[ip];
-  try {
-    const r = await fetch(`https://ip-api.com/json/${ip}?fields=city,country,status`);
-    const d = await r.json();
-    const loc = d.status === 'success' ? [d.city, d.country].filter(Boolean).join(', ') : 'Unknown';
-    locCache[ip] = loc; return loc;
-  } catch { return 'Unknown'; }
-}
 
 function fmtDate(d) {
   if (!d) return 'N/A';
