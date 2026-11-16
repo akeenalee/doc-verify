@@ -198,7 +198,9 @@ async function hasRecords(tenantId) {
 
 // Issue-time verdict for one document from a lookup result.
 // required: the school only issues to students found in its records.
-// Returns { errors: [], warnings: [], source }
+// Once a student is found, the record is the authority: a different name
+// always blocks, and the details printed come from the record (lockRecord).
+// Returns { errors: [], warnings: [], source, record }
 function assess(lookup, docType, name, required) {
   const errors = [], warnings = [];
   const flag = msg => (required ? errors : warnings).push(msg);
@@ -208,11 +210,30 @@ function assess(lookup, docType, name, required) {
     return { errors, warnings, source: null };
   }
   const rec = lookup.record;
-  if (name && !sameName(rec.full_name, name)) flag(`Name doesn't match student records, which say "${rec.full_name}".`);
+  if (name && !sameName(rec.full_name, name)) errors.push(`Name doesn't match student records, which say "${rec.full_name}".`);
   const s = statusCheck(docType, rec.status);
   if (s.error) errors.push(s.error);   // the school's own records say not finished: always blocks an award
   if (s.warning) warnings.push(s.warning);
-  return { errors, warnings, source: lookup.source };
+  return { errors, warnings, source: lookup.source, record: rec };
+}
+
+// Fields a found record fixes, as the issue form / CSV names them
+const LOCKED = { full_name: 'full_name', programme: 'programme', faculty: 'faculty', department: 'department',
+                 degree_class: 'degree_class', entry_year: 'entry_year', graduation_year: 'graduation_year' };
+
+// Overwrite form/CSV data with the record's values where the record has them.
+// Returns the names of fields whose submitted value was replaced.
+function lockRecord(data, record) {
+  const replaced = [];
+  if (!record) return replaced;
+  for (const [field, key] of Object.entries(LOCKED)) {
+    const v = record[key];
+    if (!v) continue;
+    const given = String(data[field] ?? '').trim();
+    if (given && given !== v && !(field === 'full_name' && sameName(given, v))) replaced.push(field);
+    data[field] = v;
+  }
+  return replaced;
 }
 
 // One document: look up, then judge. Skips everything when the school has no
@@ -224,7 +245,7 @@ async function registrationCheck(tenantId, docType, matric, name) {
 }
 
 module.exports = {
-  hasRecords, assess, registrationCheck,
+  hasRecords, assess, registrationCheck, lockRecord, LOCKED,
   FIELDS, normMatric, sameName, nameKey, lookupStudent, lookupMany, markIssued, requireRegistered,
   encryptSecret, decryptSecret, checkSisUrl, loadSis, sisLookup, statusCheck, AWARD_TYPES,
 };
