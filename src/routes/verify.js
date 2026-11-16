@@ -3,42 +3,32 @@ const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
-const { verifyDocSignature, signDocId, tenantBaseUrl, tenantSubdomain,
+const { verifyDocSignature, tenantBaseUrl, tenantSubdomain,
         signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
+const { parseSig, checkV2, signDocument } = require('../utils/signing');
+const { disclosure } = require('../utils/disclosure');
+const { checkScanAlerts } = require('../utils/scanAlerts');
 const { generatePDF }                                      = require('../utils/pdfGenerator');
 const { requireDemoAuth }                                  = require('../middleware/demoAuth');
 
 const VERIFY_FEE_KOBO = parseInt(process.env.VERIFY_FEE_KOBO) || 100000;
 
-// GET /verify?doc=DOC-XXXX&sig=HMAC16
+// GET /verify?doc=DOC-XXXX&sig=2.<kid>.<tag> (or a v1 16-hex sig)
 router.get('/', async (req, res) => {
   req._tenantId = req.tenant?.id || null;
   const { doc, paid, sig } = req.query;
   if (!doc) return res.status(400).send(renderPage('Invalid Request', 'No document ID provided.', 'error', null));
-
-  // HMAC signature validation
-  // Backwards compatible: URLs without sig still work (existing printed QR codes)
-  // Once all QR codes are regenerated, enforce sig required
-  if (sig && !verifyDocSignature(doc, sig)) {
-    const tip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-    await logScan(doc, tip, req.headers['user-agent'] || '', 'tampered', 'none', req._tenantId);
-    return res.status(400).send(renderPage(
-      'Invalid Verification Link',
-      'This verification link has been tampered with and cannot be trusted. ' +
-      'Please scan the QR code directly from the original physical document.',
-      'error',
-      null
-    ));
-  }
 
   const ip        = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || '';
 
   try {
     const result = await pool.query(
-      `SELECT id, doc_id, title, issued_to, issued_by, doc_type,
-              issue_date, expiry_date, status, metadata, tenant_id, superseded_by
-       FROM documents WHERE doc_id = $1`,
+      `SELECT d.id, d.doc_id, d.title, d.issued_to, d.issued_by, d.doc_type,
+              d.issue_date, d.expiry_date, d.status, d.metadata, d.tenant_id, d.superseded_by,
+              COALESCE(t.sig_strict, FALSE) AS sig_strict, t.disclosure
+       FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id
+       WHERE d.doc_id = $1`,
       [doc]
     );
 
@@ -46,6 +36,35 @@ router.get('/', async (req, res) => {
       await logScan(doc, ip, userAgent, 'not_found', 'none', req._tenantId);
       return res.send(renderPage('Document Not Found',
         `No record found for ID: <strong>${escHtml(doc)}</strong>.`, 'error', null));
+    }
+
+    // Signature check. v2 links are checked against the stored record, so a
+    // forged link or an edited database row both fail. v1 links (doc ID only)
+    // and unsigned links still work unless the school has turned on strict mode.
+    const parsed = parseSig(sig);
+    let sigOk = null; // null: no signature on the link
+    if (parsed.version === 2) sigOk = (await checkV2(result.rows[0], parsed)) === 'valid';
+    else if (parsed.version === 1) sigOk = verifyDocSignature(doc, sig);
+    else if (parsed.version === -1) sigOk = false;
+    if (sigOk === false) {
+      await logScan(doc, ip, userAgent, 'tampered', 'none', req._tenantId);
+      return res.status(400).send(renderPage(
+        'Invalid Verification Link',
+        'This verification link has been tampered with and cannot be trusted. ' +
+        'Please scan the QR code directly from the original physical document.',
+        'error',
+        null
+      ));
+    }
+    if (result.rows[0].sig_strict && parsed.version !== 2) {
+      await logScan(doc, ip, userAgent, 'old_link', 'none', req._tenantId);
+      return res.status(400).send(renderPage(
+        'Older Verification Code',
+        'This QR code uses an older format that the institution no longer accepts. ' +
+        'Ask the holder for a reissued copy of the document, or contact the institution directly.',
+        'error',
+        null
+      ));
     }
 
     const docData   = result.rows[0];
@@ -128,8 +147,12 @@ router.get('/api/payment-callback', async (req, res) => {
       [reference]
     );
 
-    const cbSig = signDocId(doc_id);
-    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&sig=${cbSig}&paid=${encodeURIComponent(reference)}`);
+    // The payer comes back without the QR's own link, so sign it afresh
+    const d = await pool.query(
+      'SELECT doc_id, tenant_id, doc_type, issue_date, issued_to FROM documents WHERE doc_id = $1', [doc_id]);
+    if (!d.rows.length) return res.redirect('/pay.html?error=invalid_metadata');
+    const cbSig = await signDocument(d.rows[0]);
+    res.redirect(`/verify?doc=${encodeURIComponent(doc_id)}&sig=${encodeURIComponent(cbSig)}&paid=${encodeURIComponent(reference)}`);
   } catch (err) {
     console.error('Payment callback error:', err);
     res.redirect('/pay.html?error=verification_failed');
@@ -214,10 +237,12 @@ router.get('/doc-preview/:docId', async (req, res) => {
   }
   try {
     const result = await pool.query(
-      'SELECT * FROM documents WHERE doc_id = $1',
+      'SELECT d.*, t.disclosure FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id WHERE d.doc_id = $1',
       [docId]
     );
     if (!result.rows.length) return res.status(404).send('Document not found');
+    if (!disclosure(result.rows[0].disclosure).document_pdf)
+      return res.status(403).send('The institution does not publish the full document on the verification page.');
 
     const docData = result.rows[0];
     res.setHeader('Content-Type', 'application/pdf');
@@ -350,6 +375,7 @@ async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', ten
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [docId, ip, userAgent, result, paymentMethod, geo, tenantId]
     );
+    await checkScanAlerts(docId, result).catch(e => console.error('Scan alert check:', e.message));
   } catch (e) {
     console.error('Log scan error:', e.message);
     // Fallback without geo_location if column missing
@@ -370,7 +396,7 @@ function scanResult(docData) {
 }
 
 function renderResult(docData, isExpired) {
-  docData = { ...docData,
+  docData = { ...docData, _show: disclosure(docData.disclosure),
     _previewUrl: `/verify/doc-preview/${encodeURIComponent(docData.doc_id)}?t=${signPreviewToken(docData.doc_id)}` };
   if (docData.status === 'revoked') return renderPage('Document Revoked', null, 'revoked', docData);
   if (docData.status === 'superseded') return renderPage('Document Superseded',
@@ -400,11 +426,16 @@ function renderPage(pageTitle, message, state, docData) {
   };
   const s = states[state] || states.error;
 
+  const show = docData ? (docData._show || disclosure(docData.disclosure)) : {};
+  const meta = (docData && docData.metadata) || {};
   const docFields = docData ? `
     <table style="width:100%;border-collapse:collapse;margin-top:16px;">
       ${row('Document ID', escHtml(docData.doc_id), true)}
-      ${row('Title', escHtml(docData.title))}
-      ${row('Issued To', escHtml(docData.issued_to))}
+      ${show.title ? row('Title', escHtml(docData.title)) : ''}
+      ${show.holder_name ? row('Issued To', escHtml(docData.issued_to)) : ''}
+      ${show.programme && meta.programme ? row('Programme', escHtml(meta.programme)) : ''}
+      ${show.class_of_degree && (meta.degree_class || meta.class) ? row('Class of Degree', escHtml(meta.degree_class || meta.class)) : ''}
+      ${show.graduation_year && meta.graduation_year ? row('Graduation Year', escHtml(meta.graduation_year)) : ''}
       ${row('Issued By', escHtml(docData.issued_by))}
       ${docData.doc_type ? row('Document Type', escHtml(docData.doc_type)) : ''}
       ${row('Issue Date', formatDate(docData.issue_date))}
@@ -412,7 +443,7 @@ function renderPage(pageTitle, message, state, docData) {
     </table>
   ` : `<p style="color:#666;margin:16px 0 0;">${message || ''}</p>`;
 
-  const showPreview = docData && state === 'verified';
+  const showPreview = docData && state === 'verified' && show.document_pdf;
 
   const documentPreview = showPreview ? `
     <div style="margin-top:28px;">

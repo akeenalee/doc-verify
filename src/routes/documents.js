@@ -15,6 +15,7 @@ router.post('/', async (req, res) => {
   const docId = generateDocId(prefix || req.tenant.short_code || 'DOC');
 
   try {
+    await require('../utils/signing').activeKey(tenantId);
     const result = await pool.query(
       `INSERT INTO documents
          (doc_id, title, issued_to, issued_by, doc_type, expiry_date, metadata, tenant_id)
@@ -24,7 +25,7 @@ router.post('/', async (req, res) => {
        expiry_date||null, metadata ? JSON.stringify(metadata) : '{}', tenantId]
     );
 
-    const { dataUrl, url } = await generateQRDataUrl(docId, req.tenant);
+    const { dataUrl, url } = await generateQRDataUrl(result.rows[0], req.tenant);
     res.status(201).json({ document: result.rows[0], qr: { dataUrl, url } });
   } catch (err) {
     console.error('Error creating document:', err);
@@ -76,12 +77,12 @@ router.get('/:docId/qr', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT status FROM documents WHERE doc_id=$1 AND tenant_id=$2',
+      'SELECT * FROM documents WHERE doc_id=$1 AND tenant_id=$2',
       [docId, tenantId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Document not found.' });
 
-    const { buffer } = await generateQRBuffer(docId, req.tenant);
+    const { buffer } = await generateQRBuffer(result.rows[0], req.tenant);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', `inline; filename="qr-${docId}.png"`);
     res.send(buffer);

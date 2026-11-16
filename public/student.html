@@ -95,6 +95,11 @@
       <input type="email" id="reg-email" placeholder="you@email.com"/>
       <label>Phone (optional, for SMS alerts)</label>
       <input type="tel" id="reg-phone" placeholder="e.g. 08012345678"/>
+      <div id="reg-claim-wrap">
+        <label for="reg-claim">Claim code</label>
+        <input type="text" id="reg-claim" placeholder="XXXX-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase;letter-spacing:1px"/>
+        <p style="font-size:12px;color:#888;margin:-6px 0 12px">Your institution gives you this one-off code with your document. It proves the matric number is yours.</p>
+      </div>
       <label>Set a PIN (4-8 digits)</label>
       <input type="password" id="reg-pin" placeholder="Choose a PIN" maxlength="8"/>
       <button class="btn" id="register-btn">Create account</button>
@@ -120,6 +125,14 @@
           <div class="balance-label">Verification tokens remaining</div>
         </div>
         <button class="btn btn-sm" id="buy-tab-btn" style="width:auto">Buy tokens</button>
+      </div>
+
+      <div id="claim-card" style="display:none;border:1px solid #f0d9a8;background:#fff8e8;border-radius:10px;padding:16px;margin-bottom:16px">
+        <p style="font-size:14px;font-weight:600;color:#1a3a5c;margin-bottom:6px">Confirm this matric number is yours</p>
+        <p style="font-size:13px;color:#666;margin-bottom:12px">Enter the claim code your institution gave you. Until then your documents and verification log stay hidden.</p>
+        <input type="text" id="claim-code" placeholder="XXXX-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase;letter-spacing:1px"/>
+        <button class="btn" id="claim-btn">Confirm</button>
+        <p class="err" id="claim-err"></p>
       </div>
 
       <div class="tabs">
@@ -208,6 +221,33 @@ if (params.get('error')) {
   } catch (e) {}
 })();
 
+(async () => {
+  try {
+    const r = await fetch(`${BASE}/api/tokens/config`);
+    const c = await r.json();
+    if (c.claim_required === false) document.getElementById('reg-claim-wrap').style.display = 'none';
+  } catch (e) {}
+})();
+
+document.getElementById('claim-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('claim-err');
+  const btn   = document.getElementById('claim-btn');
+  errEl.classList.remove('show');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${BASE}/api/tokens/claim`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claim_code: document.getElementById('claim-code').value.trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showGlobalSuccess('Matric number confirmed. Your documents are now available.');
+    showPortal({ ...data.student, claim_required: true });
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.add('show');
+  } finally { btn.disabled = false; }
+});
+
 document.getElementById('show-register').addEventListener('click', () => {
   document.getElementById('login-card').style.display    = 'none';
   document.getElementById('register-card').style.display = 'block';
@@ -257,9 +297,10 @@ document.getElementById('register-btn').addEventListener('click', async () => {
   }
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating account...';
   try {
+    const claim_code = document.getElementById('reg-claim').value.trim();
     const res  = await fetch(`${BASE}/api/tokens/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matric_number: matric, institution, full_name, email, phone, pin }),
+      body: JSON.stringify({ matric_number: matric, institution, full_name, email, phone, pin, claim_code }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -288,7 +329,17 @@ async function showPortal(student) {
   document.getElementById('notify-email').checked = student.notify_email || false;
   document.getElementById('notify-sms').checked   = student.notify_sms   || false;
   loadBundles();
-  loadLog();
+  const locked = student.claim_required && !student.verified;
+  document.getElementById('claim-card').style.display = locked ? 'block' : 'none';
+  document.querySelectorAll('[data-tab="log"],[data-tab="docs"]').forEach(t => t.style.display = locked ? 'none' : '');
+  if (locked) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('[data-tab="buy"]').classList.add('active');
+    document.getElementById('tab-buy').classList.add('active');
+  } else {
+    loadLog();
+  }
 }
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -337,7 +388,7 @@ async function loadMyDocs() {
         <div style="font-size:12px;color:#888;margin-bottom:8px">Issue date: ${fmtDate(doc.issue_date)}</div>
         <div style="font-size:11px;font-family:monospace;color:#999;margin-bottom:12px">${esc(doc.doc_id)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a href="${BASE}/verify?doc=${encodeURIComponent(doc.doc_id)}" target="_blank"
+          <a href="${esc(doc.verify_url || `${BASE}/verify?doc=${encodeURIComponent(doc.doc_id)}`)}" target="_blank"
              style="font-size:12px;color:#1a3a5c;font-weight:500;text-decoration:none;border:1px solid #1a3a5c;padding:6px 14px;border-radius:6px">
             View Verify Page
           </a>

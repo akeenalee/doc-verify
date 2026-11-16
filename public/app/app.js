@@ -9,11 +9,12 @@
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const has = (...roles) => S.user && S.user.roles.some(r => roles.includes(r));
   const canIssue = () => has('owner', 'officer', 'approver');
+  const vendorOnly = () => S.user && S.user.roles.length === 1 && S.user.roles[0] === 'vendor';
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
   const fmtTime = d => d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-  const ROLE_LABEL = { owner: 'Owner', officer: 'Records Officer', approver: 'Approver', auditor: 'Auditor' };
+  const ROLE_LABEL = { owner: 'Owner', officer: 'Records Officer', approver: 'Approver', auditor: 'Auditor', vendor: 'Print vendor' };
   const STATUS_LABEL = { active: 'Active', revoked: 'Revoked', superseded: 'Superseded', expired: 'Expired' };
-  const RESULT_LABEL = { found: 'Verified', revoked: 'Revoked', superseded: 'Superseded', not_found: 'Not found', tampered: 'Tampered link' };
+  const RESULT_LABEL = { found: 'Verified', revoked: 'Revoked', superseded: 'Superseded', not_found: 'Not found', tampered: 'Tampered link', old_link: 'Older QR refused' };
   const PAY_LABEL = { none: 'None', student_token: 'Graduate credit', employer_payment: 'Verifier paid', replacement_pdf: 'Graduate download' };
   const ACTION_LABEL = {
     sign_in: 'Signed in', sign_in_recovery_code: 'Signed in with a recovery code', sign_out: 'Signed out',
@@ -27,6 +28,17 @@
     batch_uploaded: 'Uploaded batch', batch_submitted: 'Submitted batch for approval', batch_approved: 'Approved batch',
     batch_rejected: 'Rejected batch', batch_cancelled: 'Cancelled batch', batch_issued: 'Issued batch',
     batch_pdfs_downloaded: 'Downloaded batch PDFs', approval_enabled: 'Turned batch approval on', approval_disabled: 'Turned batch approval off',
+    claim_code_issued: 'Created graduate claim code', batch_claim_codes_issued: 'Created claim codes for batch',
+    signing_key_rotated: 'Rotated QR signing key', strict_mode_enabled: 'Turned strict QR checking on', strict_mode_disabled: 'Turned strict QR checking off',
+    claim_codes_required: 'Required claim codes for the graduate portal', claim_codes_not_required: 'Stopped requiring claim codes',
+    print_spec_updated: 'Changed QR print layout', print_pack_downloaded: 'Downloaded print pack',
+    disclosure_updated: 'Changed what verifiers see', scan_alert_acknowledged: 'Handled scan alert',
+  };
+  const ALERT_LABEL = { many_scans: 'Many scans', many_places: 'Scanned in several cities', tampered: 'Tampered link' };
+  const ALERT_TEXT = {
+    many_scans: d => `${d.scans_24h} scans in 24 hours. A copied QR on fake certificates often shows up like this.`,
+    many_places: d => `Scanned from ${(d.places || []).join(', ')} within 24 hours.`,
+    tampered: () => 'Someone opened a link for this document with a signature that did not match. That can mean a forged or edited QR.',
   };
   const TYPE_LABEL = { Certificate: 'Degree Certificate', Transcript: 'Academic Transcript', Completion: 'Course Completion Certificate',
     Admission: 'Admission Letter', Attestation: 'Attestation Letter' };
@@ -165,22 +177,27 @@
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const NAV = [
-    { group: 'Work' },
+    { group: 'Print', show: vendorOnly },
+    { path: '/print', label: 'Print jobs', show: vendorOnly },
+    { group: 'Work', show: () => !vendorOnly() },
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/documents', label: 'Documents' },
     { path: '/issue',     label: 'Issue document', show: canIssue },
     { path: '/batches',   label: 'Bulk issue' },
     { path: '/search',    label: 'Search' },
-    { group: 'Oversight' },
+    { path: '/print',     label: 'Print jobs', show: canIssue },
+    { group: 'Oversight', show: () => !vendorOnly() },
     { path: '/scans',     label: 'Verification log' },
+    { path: '/alerts',    label: 'Scan alerts' },
     { path: '/activity',  label: 'Activity log', show: () => has('owner', 'auditor') },
     { group: 'Administration', show: () => has('owner') },
     { path: '/users',     label: 'Users and roles', show: () => has('owner') },
     { path: '/branding',  label: 'Branding', show: () => has('owner') },
     { path: '/signatories', label: 'Signatories', show: () => has('owner') },
+    { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
   ];
   function renderNav(active) {
-    $('nav').innerHTML = NAV.filter(i => !i.show || i.show()).map(i => i.group
+    $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
       ? `<div class="nav-group">${esc(i.group)}</div>`
       : `<a href="#${i.path}" class="${active.startsWith(i.path) ? 'active' : ''}">${esc(i.label)}</a>`).join('');
   }
@@ -198,6 +215,7 @@
         <a class="btn secondary" href="#/search">Search</a></div></div>
       ${low ? `<div class="notice">You have ${esc(low)} recovery codes left. Ask an Owner to reset your access to get new ones.</div>` : ''}
       <div id="dash-pending"></div>
+      ${d.open_alerts ? `<div class="notice bad">${d.open_alerts} open scan alert${d.open_alerts > 1 ? 's' : ''}. <a href="#/alerts">Review</a></div>` : ''}
       ${tampered ? `<div class="notice bad">${tampered} scan${tampered > 1 ? 's' : ''} with a tampered link in the last 30 days. <a href="#/scans?result=tampered">Review</a></div>` : ''}
       <div class="cards">
         <div class="card"><div class="k">Active documents</div><div class="v">${esc(d.documents.active)}</div></div>
@@ -291,11 +309,13 @@
       actions.push(`<a class="btn" href="${base}/pdf">Download PDF</a>`);
       actions.push(`<a class="btn secondary" href="${base}/qr">QR PNG</a>`);
       actions.push(`<a class="btn secondary" href="${base}/qr?size=print">QR PNG (print)</a>`);
+      actions.push(`<a class="btn secondary" href="${base}/qr?format=svg">QR SVG (print)</a>`);
     }
     actions.push(`<button class="btn secondary" id="copy-verify">Copy verify link</button>`);
     if (canIssue() && ['active', 'revoked'].includes(doc.status)) actions.push(`<a class="btn secondary" href="#/issue?reissue=${encodeURIComponent(doc.doc_id)}">Reissue / correct</a>`);
     if (canIssue() && doc.status === 'active') actions.push(`<button class="btn danger" id="revoke">Revoke</button>`);
     if (has('owner') && d.can_restore) actions.push(`<button class="btn secondary" id="restore">Restore</button>`);
+    if (canIssue() && doc.status === 'active' && m.matric_number) actions.push(`<button class="btn secondary" id="claim">Graduate claim code</button>`);
 
     el.innerHTML = `
       <div class="page-head"><div><h1>${esc(doc.issued_to)}</h1><div class="sub">${esc(doc.title)}</div></div>
@@ -314,6 +334,22 @@
         </tbody></table></div>` : '<div class="empty">No staff actions recorded for this document.</div>'}</div>`;
 
     $('copy-verify').onclick = () => copy(d.verify_url);
+    if ($('claim')) $('claim').onclick = () => modal({
+      title: 'Graduate claim code', submit: 'Create code',
+      lead: `${doc.issued_to} needs this code once, to open their graduate portal account for matric number ${m.matric_number}. It works for ${S.meta.claim_days || 90} days and only once. Creating a new code cancels any earlier one that hasn't been used.`,
+      onSubmit: async () => {
+        const r = await api(base.replace('/app-api', '') + '/claim-code', { method: 'POST' });
+        modal({
+          title: 'Claim code for ' + r.holder,
+          html: `<div class="claim-code mono">${esc(r.code)}</div>
+            <p class="muted">Matric number <span class="mono">${esc(r.matric_number)}</span>. Use it at <span class="mono">${esc(r.portal_url)}</span> before ${esc(fmtDate(r.expires_at))}.</p>
+            <p class="muted">This is the only time the code is shown. Give it to the graduate directly (with the document, or by their own email or phone on your records), never to someone asking on their behalf.</p>
+            <div class="row" style="justify-content:flex-start"><button type="button" class="btn secondary" id="claim-copy">Copy code</button></div>`,
+        });
+        $('claim-copy').onclick = () => copy(r.code);
+        return true;
+      },
+    });
     if ($('revoke')) $('revoke').onclick = () => modal({
       title: 'Revoke ' + doc.doc_id, danger: true, submit: 'Revoke document',
       lead: 'Verifiers will see this document as revoked. They never see the reason. An Owner can restore it within ' + S.meta.restore_days + ' days.',
@@ -343,6 +379,9 @@
     if (d.roles) parts.push('Roles: ' + d.roles.map(r => ROLE_LABEL[r] || r).join(', '));
     if (d.doc_type) parts.push(d.doc_type);
     if (d.matric_number) parts.push(d.matric_number);
+    if (d.changes) parts.push(d.changes.join('; '));
+    if (d.kind) parts.push(ALERT_LABEL[d.kind] || d.kind);
+    if (d.size_mm) parts.push(`${d.paper || ''} ${d.anchor || ''}, ${d.x_mm} x ${d.y_mm} mm, ${d.size_mm} mm QR`);
     if (d.file_name) parts.push(d.file_name);
     if (d.rows != null) parts.push(`${d.rows} rows` + (d.errors ? `, ${d.errors} with errors` : ''));
     if (d.issued != null) parts.push(`${d.issued} issued`);
@@ -466,6 +505,7 @@
     { value: 'officer', label: 'Records Officer', hint: 'Issue, revoke, reissue, search' },
     { value: 'approver', label: 'Approver', hint: 'Issues today; approves batches once approval is switched on' },
     { value: 'auditor', label: 'Auditor', hint: 'Read only: documents, logs, activity' },
+    { value: 'vendor', label: 'Print vendor', hint: 'Outside printer: downloads QR print packs only. Can\'t be combined with other roles' },
   ];
 
   V['/users'] = async (el) => {
@@ -662,6 +702,127 @@
   };
 
 
+  // ── QR and portal security (Phase 4) ────────────────────────────────────
+  V['/security'] = async (el) => {
+    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can change security settings.</div>'; return; }
+    const [d, dis] = await Promise.all([api('/settings/security'), api('/settings/disclosure')]);
+    const active = d.keys.find(k => k.status === 'active');
+    const KEY_STATUS = { active: 'In use', retired: 'Retired, still checks older QRs', revoked: 'Revoked' };
+    el.innerHTML = `
+      <div class="page-head"><div><h1>QR and portal security</h1><div class="sub">How ${esc(S.tenant.name)} QR codes are signed and who can open a graduate account</div></div></div>
+      <div class="panel"><h2>QR signing key</h2>
+        <p class="muted">Every QR code carries a signature made with a key that belongs to ${esc(S.tenant.name)} alone. The signature covers the document ID, type, issue date and the holder's name, so a changed record or a made-up link fails the check. Nobody, including your staff, ever sees the key.</p>
+        ${d.master === 'shared' ? '<div class="notice">Keys are currently protected by the platform\'s general secret. UniVerify will move them to a dedicated signing secret; rotate the key once that happens.</div>' : ''}
+        <div class="table-wrap"><table><thead><tr><th>Key</th><th>Status</th><th>Created</th><th>Retired</th></tr></thead><tbody>
+          ${d.keys.map(k => `<tr><td class="mono">Key ${esc(k.kid)}</td><td>${badge(k.status === 'active' ? 'active' : 'retired', KEY_STATUS[k.status])}</td>
+            <td>${esc(fmtTime(k.created_at))}</td><td>${esc(k.retired_at ? fmtTime(k.retired_at) : '')}</td></tr>`).join('')}
+        </tbody></table></div>
+        <p style="margin-top:14px"><button class="btn secondary" id="rotate">Rotate key</button></p></div>
+      <div class="panel"><h2>Strict checking</h2>
+        <p class="muted">QR codes made before signing keys existed carry an older, weaker signature. They still verify while strict checking is off.</p>
+        ${d.older_documents ? `<div class="notice">${esc(d.older_documents)} active document${d.older_documents > 1 ? 's were' : ' was'} issued before key 1. Printed copies of ${d.older_documents > 1 ? 'those' : 'that one'} may carry the older QR, which strict checking refuses. Reissue or reprint them first.</div>` : '<div class="notice ok">Every active document was issued under a signing key, so strict checking is safe to turn on.</div>'}
+        <p>Strict checking is <strong>${d.sig_strict ? 'on' : 'off'}</strong>.</p>
+        <button class="btn${d.sig_strict ? ' secondary' : ''}" id="strict">${d.sig_strict ? 'Turn strict checking off' : 'Turn strict checking on'}</button></div>
+      <div class="panel"><h2>Graduate portal claim codes</h2>
+        <p class="muted">With claim codes required, a graduate can only open a portal account for a matric number with the one-off code you give them. Without it, anyone who knows a matric number could see that graduate's documents and who verified them.</p>
+        <p>Claim codes are <strong>${d.student_claim_required ? 'required' : 'not required'}</strong>.</p>
+        <button class="btn${d.student_claim_required ? ' danger' : ''}" id="claims">${d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes'}</button></div>
+      <div class="panel"><h2>What verifiers see</h2>
+        <p class="muted">After a verifier pays or the graduate uses a credit, the verify page always shows the document ID, ${esc(S.tenant.name)} as issuer, the document type, issue date and status. Choose what else it shows. Less is safer for graduates; more saves verifiers a phone call.</p>
+        <form id="dis-f"><div class="checks">${Object.entries(dis.fields).map(([k, f]) => `<label><input type="checkbox" name="${esc(k)}"${dis.disclosure[k] ? ' checked' : ''}/> <span>${esc(f.label)}</span></label>`).join('')}</div>
+        <button class="btn" type="submit" style="margin-top:12px">Save</button></form></div>`;
+    $('dis-f').onsubmit = async e => {
+      e.preventDefault();
+      const body = {}; Object.keys(dis.fields).forEach(k => { body[k] = e.target.elements[k].checked; });
+      try { await api('/settings/disclosure', { method: 'PATCH', body }); toast('Saved. The verify page uses this straight away.'); }
+      catch (err) { toast(err.message); }
+    };
+    const save = (body, msg) => api('/settings/security', { method: 'PATCH', body }).then(() => { toast(msg); render(); });
+    $('rotate').onclick = () => modal({
+      title: 'Rotate QR signing key', submit: 'Rotate key',
+      lead: `New QR codes, and every PDF downloaded from now on, use key ${active ? active.kid + 1 : 1}. QR codes already printed with older keys keep verifying. Do this once a year, when staff with access leave, or if you suspect a problem.`,
+      onSubmit: async () => { await api('/settings/security/rotate-key', { method: 'POST' }); toast('Key rotated.'); render(); },
+    });
+    $('strict').onclick = () => modal({
+      title: d.sig_strict ? 'Turn strict checking off' : 'Turn strict checking on',
+      submit: d.sig_strict ? 'Turn off' : 'Turn on', danger: !d.sig_strict && d.older_documents > 0,
+      lead: d.sig_strict ? 'Older QR codes will verify again.'
+        : 'Scans of older QR codes will be refused and the verifier is told to ask the holder for a reissued copy.',
+      onSubmit: () => save({ sig_strict: !d.sig_strict }, d.sig_strict ? 'Strict checking off.' : 'Strict checking on.'),
+    });
+    $('claims').onclick = () => modal({
+      title: d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes',
+      submit: d.student_claim_required ? 'Stop requiring' : 'Require', danger: d.student_claim_required,
+      lead: d.student_claim_required
+        ? 'Anyone who knows a matric number will be able to open a portal account for it and see that graduate\'s documents. Only do this for a demonstration.'
+        : 'New accounts need a claim code. Existing accounts that never used one must enter a code before they see documents again.',
+      onSubmit: () => save({ student_claim_required: !d.student_claim_required }, 'Saved.'),
+    });
+  };
+
+  // ── Print jobs (Phase 4b) ───────────────────────────────────────────────
+  const ANCHOR_LABEL = { 'top-left': 'Top left', 'top-right': 'Top right', 'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right' };
+  V['/print'] = async (el) => {
+    const [j, sp] = await Promise.all([api('/print/jobs'), api('/print/specs')]);
+    const spec = t => sp.specs[t];
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Print jobs</h1><div class="sub">QR codes for documents printed by an outside printer</div></div></div>
+      ${vendorOnly() ? `<div class="notice">Each pack holds one QR per document (SVG and 600 dpi PNG), a manifest that says which QR goes on whose document, and the placement spec. Follow the spec, scan a sample before dispatch, and delete the pack once the job is delivered.</div>` : ''}
+      <div class="panel"><h2>Issued batches</h2>
+        ${j.jobs.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Documents</th><th>Issued</th><th>Last pack</th><th></th></tr></thead><tbody>
+          ${j.jobs.map(b => `<tr><td>${esc(b.file_name || '')}</td><td>${esc(typeLabel(b.doc_type))}</td><td>${esc(b.issued_count)}</td>
+            <td>${esc(fmtTime(b.issued_at))}</td><td>${esc(b.last_pack_at ? fmtTime(b.last_pack_at) : 'Never')}</td>
+            <td><a class="btn sm" href="/app-api/print/jobs/${esc(b.id)}/pack.zip">Download print pack</a></td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">No issued batches yet. Packs appear here once a bulk upload is issued.</div>'}</div>
+      <div class="panel"><h2>QR placement by document type</h2>
+        <p class="muted">Where the printer puts the QR. Codes are printed with a ${sp.dpi} dpi image or the SVG, and each dot must be at least ${sp.min_module_mm} mm for phones to read it reliably.</p>
+        <div class="table-wrap"><table><thead><tr><th>Document type</th><th>Paper</th><th>Corner</th><th>From side / edge</th><th>QR size</th><th>Dot size</th><th></th></tr></thead><tbody>
+          ${sp.doc_types.map(t => { const s = spec(t); return `<tr><td>${esc(typeLabel(t))}${s.custom ? '' : ' <span class="muted">(default)</span>'}</td>
+            <td>${esc(s.paper)}</td><td>${esc(ANCHOR_LABEL[s.anchor])}</td><td>${esc(s.x_mm)} / ${esc(s.y_mm)} mm</td><td>${esc(s.size_mm)} mm</td><td>${esc(s.module_mm)} mm</td>
+            <td style="white-space:nowrap"><a class="btn secondary sm" target="_blank" href="/app-api/print/specs/${encodeURIComponent(t)}/sheet.pdf">Spec sheet</a>
+            ${has('owner') ? ` <button class="btn ghost sm" data-spec="${esc(t)}">Change</button>` : ''}</td></tr>`; }).join('')}
+        </tbody></table></div></div>`;
+    el.querySelectorAll('[data-spec]').forEach(btn => btn.onclick = () => {
+      const t = btn.dataset.spec, s = spec(t);
+      modal({
+        title: 'QR placement: ' + typeLabel(t), submit: 'Save',
+        lead: 'Measure on a printed sample of this document. Distances run from the chosen corner to the nearest edge of the QR.',
+        fields: [
+          { name: 'paper', label: 'Paper', type: 'select', value: s.paper, options: sp.papers.map(p => ({ value: p, label: p })) },
+          { name: 'anchor', label: 'Corner', type: 'select', value: s.anchor, options: sp.anchors.map(a => ({ value: a, label: ANCHOR_LABEL[a] })) },
+          { name: 'x_mm', label: 'From the side edge (mm)', type: 'number', value: String(s.x_mm) },
+          { name: 'y_mm', label: 'From the top or bottom edge (mm)', type: 'number', value: String(s.y_mm) },
+          { name: 'size_mm', label: 'QR size (mm)', type: 'number', value: String(s.size_mm), hint: '30 mm is a safe default. Smaller codes are refused when the dots would be too small to scan.' },
+          { name: 'notes', label: 'Notes for the printer (optional)', type: 'textarea', value: s.notes },
+        ],
+        onSubmit: async v => { await api('/print/specs/' + encodeURIComponent(t), { method: 'PUT', body: v }); toast('Placement saved.'); render(); },
+      });
+    });
+  };
+
+  // ── Scan alerts (Phase 4b) ──────────────────────────────────────────────
+  V['/alerts'] = async (el, q) => {
+    const all = q.get('status') === 'all';
+    const d = await api('/alerts' + (all ? '?status=all' : ''));
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Scan alerts</h1><div class="sub">Scan patterns that may mean a copied or forged QR</div></div>
+        <div class="actions"><a class="btn ghost" href="#/alerts${all ? '' : '?status=all'}">${all ? 'Show open alerts only' : 'Show handled alerts too'}</a></div></div>
+      <div class="notice">An alert is not proof of fraud. A graduate applying to many employers in one day can trigger one too. Check the document's verification log, contact the graduate if needed, and revoke or reissue if the QR has been copied.</div>
+      <div class="panel">${d.alerts.length ? `<div class="table-wrap"><table><thead><tr><th>Raised</th><th>Document</th><th>Holder</th><th>Alert</th><th>Detail</th><th>Status</th><th></th></tr></thead><tbody>
+        ${d.alerts.map(a => `<tr><td>${esc(fmtTime(a.created_at))}</td><td class="mono"><a href="#/doc/${encodeURIComponent(a.doc_id)}">${esc(a.doc_id)}</a></td>
+          <td>${esc(a.issued_to || '')}</td><td>${badge(a.kind === 'tampered' ? 'tampered' : 'superseded', ALERT_LABEL[a.kind] || a.kind)}</td>
+          <td>${esc((ALERT_TEXT[a.kind] || (() => ''))(a.detail || {}))}</td>
+          <td>${a.acknowledged_at ? `Handled by ${esc(a.acknowledged_by || '')} on ${esc(fmtTime(a.acknowledged_at))}: ${esc(a.note || '')}` : badge('revoked', 'Open')}</td>
+          <td>${a.acknowledged_at ? '' : `<button class="btn secondary sm" data-ack="${esc(a.id)}">Mark handled</button>`}</td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">${all ? 'No alerts yet.' : 'No open alerts.'}</div>`}</div>`;
+    el.querySelectorAll('[data-ack]').forEach(btn => btn.onclick = () => modal({
+      title: 'Mark alert handled', submit: 'Mark handled',
+      lead: 'The same kind of alert stays quiet for this document for 24 hours after you mark it handled.',
+      fields: [{ name: 'note', label: 'What did you check or do?', type: 'textarea' }],
+      onSubmit: async v => { await api('/alerts/' + btn.dataset.ack + '/acknowledge', { method: 'POST', body: v }); toast('Alert marked handled.'); render(); },
+    }));
+  };
+
   // ── Bulk issue (Phase 3) ────────────────────────────────────────────────
   const BATCH_LABEL = { draft: 'Draft', pending_approval: 'Awaiting approval', issued: 'Issued', rejected: 'Rejected', cancelled: 'Cancelled' };
   const COL_LABEL = { full_name: 'Full name', matric_number: 'Matric number', title: 'Title', programme: 'Programme', faculty: 'Faculty',
@@ -732,6 +893,7 @@
     if (['draft', 'pending_approval'].includes(b.status) && canIssue() && (b.created_by === S.user.id || has('owner')))
       actions.push('<button class="btn secondary" id="bt-cancel">Cancel batch</button>');
     if (b.status === 'issued' && canIssue()) actions.push(`<a class="btn" href="${base}/pdfs.zip">Download all PDFs (zip)</a>`);
+    if (b.status === 'issued' && canIssue()) actions.push('<button class="btn secondary" id="bt-claims">Graduate claim codes (CSV)</button>');
     if (b.error_count) actions.push(`<a class="btn secondary" href="${base}/errors.csv">Rows to fix (CSV)</a>`);
 
     let note = '';
@@ -743,6 +905,18 @@
     if (b.status === 'rejected') note = `Rejected by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}: ${b.decision_note || ''}`;
     if (b.status === 'cancelled') note = `Cancelled by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}. Nothing was issued.`;
 
+    const wireClaims = () => { if ($('bt-claims')) $('bt-claims').onclick = () => modal({
+      title: 'Graduate claim codes', submit: 'Create codes',
+      lead: 'Makes a fresh claim code for every graduate in this batch and downloads them as a CSV, so you can send each graduate their own code. Any earlier code for these graduates that hasn\'t been used stops working. Keep the file safe and delete it once the codes are sent.',
+      onSubmit: async () => {
+        const r = await fetch(base + '/claim-codes.csv', { method: 'POST', credentials: 'same-origin' });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'Failed to create claim codes.'); }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(await r.blob());
+        a.download = `claim-codes-${b.id.slice(0, 8)}.csv`; a.click();
+        toast('Claim codes downloaded.');
+      },
+    }); };
     el.innerHTML = `
       <div class="page-head"><div><h1>${esc(b.file_name)}</h1><div class="sub">${esc(typeLabel(b.doc_type))} · uploaded by ${esc(who(b.created_by))} on ${esc(fmtTime(b.created_at))}</div></div>
         <div class="actions">${badge('b-' + b.status, BATCH_LABEL[b.status])}</div></div>
@@ -767,6 +941,7 @@
         </tbody></table></div></div>`;
 
     const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (err) { toast(err.message); btn.disabled = false; } };
+    wireClaims();
     if ($('bt-submit')) $('bt-submit').onclick = () => modal({
       title: d.approval_required ? 'Submit for approval' : `Issue ${b.valid_count} documents`, submit: d.approval_required ? 'Submit' : 'Issue now',
       lead: d.approval_required
@@ -803,7 +978,8 @@
     if (path.startsWith('/doc/')) { view = V['/doc']; arg = decodeURIComponent(path.slice(5)); }
     else if (path.startsWith('/batch/')) { view = V['/batch']; arg = decodeURIComponent(path.slice(7)); }
     else view = V[path];
-    if (!view) { go('/dashboard'); return; }
+    if (!view) { go(vendorOnly() ? '/print' : '/dashboard'); return; }
+    if (vendorOnly() && path !== '/print') { go('/print'); return; }
     renderNav(path.startsWith('/doc/') ? '/documents' : path.startsWith('/batch/') ? '/batches' : path);
     $('side').classList.remove('open');
     el.innerHTML = '<div class="empty">Loading...</div>';
@@ -849,6 +1025,7 @@
       ],
       onSubmit: async v => { await api('/auth/password', { method: 'POST', body: v }); toast('Password changed.'); },
     });
+    if (vendorOnly()) $('top-search').style.visibility = 'hidden';
     $('top-search').onsubmit = e => { e.preventDefault(); go('/search', { q: $('top-q').value.trim() }); };
 
     window.addEventListener('hashchange', render);

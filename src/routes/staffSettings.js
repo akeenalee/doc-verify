@@ -18,6 +18,8 @@ const { clearTenantCache } = require('../middleware/tenantResolver');
 const { sniffImage, isoDate } = require('../utils/branding');
 const { generatePDF } = require('../utils/pdfGenerator');
 const { DOC_TYPES }   = require('./staffApp');
+const { listKeys, rotateKey, activeKey, currentMasterRef } = require('../utils/signing');
+const { FIELDS, disclosure } = require('../utils/disclosure');
 
 const OWNER = requireStaff('owner');
 const LOGO_MAX = 300 * 1024;
@@ -144,7 +146,7 @@ router.patch('/approval', OWNER, async (req, res) => {
       const r = await pool.query(
         `SELECT COUNT(*) AS users,
                 COUNT(*) FILTER (WHERE roles && ARRAY['owner','approver']::text[]) AS deciders
-         FROM tenant_users WHERE tenant_id = $1 AND status = 'active'`, [req.tenant.id]);
+         FROM tenant_users WHERE tenant_id = $1 AND status = 'active' AND NOT ('vendor' = ANY(roles))`, [req.tenant.id]);
       if (parseInt(r.rows[0].users) < 2 || parseInt(r.rows[0].deciders) < 1)
         throw bad(409, 'Approval needs at least two active users, one of them an Owner or Approver, because nobody can approve their own batch. Invite someone first.');
     }
@@ -247,6 +249,86 @@ router.delete('/signatories/:id', OWNER, async (req, res) => {
 // ── Preview ─────────────────────────────────────────────────────────────────
 // A SPECIMEN document through the real generator, as of a chosen issue date.
 // Nothing is stored; the QR points at an ID that doesn't exist.
+// ── QR signing and graduate claims ──────────────────────────────────────────
+async function securityState(t) {
+  const [keys, flags, legacy] = await Promise.all([
+    listKeys(t.id),
+    pool.query('SELECT sig_strict, student_claim_required FROM tenants WHERE id = $1', [t.id]),
+    // Documents issued before this school's first v2 key may have printed
+    // copies with the older QR, which strict mode stops verifying
+    pool.query(
+      `SELECT COUNT(*)::int AS n FROM documents
+       WHERE tenant_id = $1 AND status = 'active'
+         AND created_at < COALESCE((SELECT MIN(created_at) FROM tenant_sign_keys WHERE tenant_id = $1), NOW())`,
+      [t.id]),
+  ]);
+  return {
+    keys: keys.map(k => ({ kid: k.kid, status: k.status, created_at: k.created_at, retired_at: k.retired_at,
+                           protected_by: k.master_ref === 'SIGNING_MASTER_KEY' ? 'dedicated' : 'shared' })),
+    sig_strict: flags.rows[0]?.sig_strict === true,
+    student_claim_required: flags.rows[0]?.student_claim_required !== false,
+    older_documents: legacy.rows[0].n,
+    master: currentMasterRef() === 'SIGNING_MASTER_KEY' ? 'dedicated' : 'shared',
+  };
+}
+
+router.get('/security', OWNER, async (req, res) => {
+  try {
+    await activeKey(req.tenant.id); // makes key 1 on first visit
+    res.json(await securityState(req.tenant));
+  } catch (e) { sendErr(res, e, 'Failed to load security settings.'); }
+});
+
+router.post('/security/rotate-key', OWNER, async (req, res) => {
+  try {
+    const kid = await rotateKey(req.tenant.id);
+    await logActivity(req, { action: 'signing_key_rotated', targetType: 'tenant', targetId: req.tenant.id, detail: { kid } });
+    res.json(await securityState(req.tenant));
+  } catch (e) { sendErr(res, e, 'Failed to rotate the key.'); }
+});
+
+router.patch('/security', OWNER, async (req, res) => {
+  try {
+    const sets = [], vals = [], log = [];
+    if (typeof req.body.sig_strict === 'boolean') {
+      vals.push(req.body.sig_strict); sets.push(`sig_strict = $${vals.length}`);
+      log.push(req.body.sig_strict ? 'strict_mode_enabled' : 'strict_mode_disabled');
+    }
+    if (typeof req.body.student_claim_required === 'boolean') {
+      vals.push(req.body.student_claim_required); sets.push(`student_claim_required = $${vals.length}`);
+      log.push(req.body.student_claim_required ? 'claim_codes_required' : 'claim_codes_not_required');
+    }
+    if (!sets.length) throw bad(400, 'Nothing to change.');
+    vals.push(req.tenant.id);
+    await pool.query(`UPDATE tenants SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
+    for (const action of log) await logActivity(req, { action, targetType: 'tenant', targetId: req.tenant.id });
+    res.json(await securityState(req.tenant));
+  } catch (e) { sendErr(res, e, 'Failed to save.'); }
+});
+
+// ── What the public verify page shows ───────────────────────────────────────
+router.get('/disclosure', OWNER, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT disclosure FROM tenants WHERE id = $1', [req.tenant.id]);
+    res.json({ disclosure: disclosure(r.rows[0]?.disclosure), fields: FIELDS });
+  } catch (e) { sendErr(res, e, 'Failed to load.'); }
+});
+
+router.patch('/disclosure', OWNER, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const cur = disclosure((await pool.query('SELECT disclosure FROM tenants WHERE id = $1', [req.tenant.id])).rows[0]?.disclosure);
+    const next = { ...cur };
+    for (const k of Object.keys(FIELDS)) if (typeof body[k] === 'boolean') next[k] = body[k];
+    const changed = Object.keys(FIELDS).filter(k => next[k] !== cur[k]);
+    if (!changed.length) return res.json({ disclosure: cur, fields: FIELDS });
+    await pool.query('UPDATE tenants SET disclosure = $2 WHERE id = $1', [req.tenant.id, JSON.stringify(next)]);
+    await logActivity(req, { action: 'disclosure_updated', targetType: 'tenant', targetId: req.tenant.id,
+      detail: { changes: changed.map(k => `${FIELDS[k].label}: ${next[k] ? 'shown' : 'hidden'}`) } });
+    res.json({ disclosure: next, fields: FIELDS });
+  } catch (e) { sendErr(res, e, 'Failed to save.'); }
+});
+
 router.get('/preview.pdf', OWNER, async (req, res) => {
   try {
     const type = DOC_TYPES.includes(req.query.type) ? req.query.type : 'Certificate';

@@ -3,12 +3,19 @@ const QRCode = require('qrcode');
 
 /**
  * Generate a human-readable document ID.
- * Format: DOC-YYYYMMDD-XXXXXXXX
- * e.g.  DOC-20241215-A3F9K2M1
+ * Format: PREFIX-YYYYMMDD-XXXXXXXXXXXXXXXX (16 Crockford base32 characters,
+ * 80 random bits, so IDs can't be guessed). No I, L, O or U, so a typed ID
+ * can't be misread. Older IDs (8 hex characters) stay valid.
  */
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 function generateDocId(prefix = 'DOC') {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const bytes = crypto.randomBytes(10);
+  let bits = 0, value = 0, rand = '';
+  for (const b of bytes) {
+    value = (value << 8) | b; bits += 8;
+    while (bits >= 5) { rand += CROCKFORD[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
   return `${prefix}-${date}-${rand}`;
 }
 
@@ -61,14 +68,18 @@ function tenantBaseUrl(subdomain) {
 }
 
 /**
- * Build the public verification URL for a document ID.
- * Includes an HMAC signature so the URL cannot be tampered with.
- * The signature covers the doc ID only, so the host change doesn't affect it.
- * Format: https://<tenant>.univerify.ng/verify?doc=DOCID&sig=HMAC16
+ * Build the public verification URL for a document.
+ * doc is a documents row (tenant_id, doc_id, doc_type, issue_date, issued_to):
+ * the link carries a v2 signature over those fields under the school's own
+ * key (see signing.js). Format:
+ *   https://<tenant>.univerify.ng/verify?doc=DOCID&sig=2.<kid>.<32 hex>
+ * A specimen gets no signature, so it can never verify.
  */
-function buildVerifyUrl(docId, subdomain) {
-  const sig = signDocId(docId);
-  return `${tenantBaseUrl(subdomain)}/verify?doc=${encodeURIComponent(docId)}&sig=${sig}`;
+async function buildVerifyUrl(doc, subdomain) {
+  const { signDocument } = require('./signing');
+  const base = `${tenantBaseUrl(subdomain)}/verify?doc=${encodeURIComponent(doc.doc_id)}`;
+  if (doc._specimen) return base;
+  return `${base}&sig=${await signDocument(doc)}`;
 }
 
 // tenant_id -> subdomain, so PDF generators can resolve the issuing tenant
@@ -98,8 +109,8 @@ async function resolveSubdomain(tenantRef) {
  * Generate a QR code as a PNG Buffer.
  * Safe to embed directly into a PDF or return as an image.
  */
-async function generateQRBuffer(docId, tenantRef) {
-  const url = buildVerifyUrl(docId, await resolveSubdomain(tenantRef));
+async function generateQRBuffer(doc, tenantRef = doc) {
+  const url = await buildVerifyUrl(doc, await resolveSubdomain(tenantRef));
   const buffer = await QRCode.toBuffer(url, {
     type: 'png',
     errorCorrectionLevel: 'H', // High - survives up to 30% damage
@@ -116,8 +127,8 @@ async function generateQRBuffer(docId, tenantRef) {
 /**
  * Generate a QR code as a base64 data URL (useful for HTML embedding).
  */
-async function generateQRDataUrl(docId, tenantRef) {
-  const url = buildVerifyUrl(docId, await resolveSubdomain(tenantRef));
+async function generateQRDataUrl(doc, tenantRef = doc) {
+  const url = await buildVerifyUrl(doc, await resolveSubdomain(tenantRef));
   const dataUrl = await QRCode.toDataURL(url, {
     errorCorrectionLevel: 'H',
     margin: 2,
