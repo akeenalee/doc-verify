@@ -11,7 +11,9 @@ const pool    = require('../db/pool');
 const { requireStaff, ROLES } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
 const { createInvite, refreshInvite } = require('../utils/staffInvite');
-const { generateDocId, buildVerifyUrl, generateQRBuffer } = require('../utils/docUtils');
+const { generateDocId, buildVerifyUrl, generateQRBuffer, tenantBaseUrl } = require('../utils/docUtils');
+const { issueClaimCode, CLAIM_DAYS } = require('../utils/claims');
+const { activeKey } = require('../utils/signing');
 const { generatePDF } = require('../utils/pdfGenerator');
 
 const ANY     = requireStaff();
@@ -74,6 +76,7 @@ function documentInput(body, tenant) {
 }
 
 async function insertDocument(client, tenant, staff, v, replacesDocId = null, batchId = null) {
+  await activeKey(tenant.id); // the school's signing key exists before its first document
   const docId = generateDocId(tenant.short_code || 'DOC');
   const cols = ['doc_id', 'title', 'issued_to', 'issued_by', 'doc_type', 'expiry_date', 'metadata', 'tenant_id', 'issued_by_user', 'replaces_doc_id'];
   const vals = [docId, v.title, v.issued_to, v.issued_by, v.doc_type, v.expiry_date,
@@ -103,7 +106,7 @@ function sendErr(res, e, fallback) {
 
 // ── Reference data ──────────────────────────────────────────────────────────
 router.get('/meta', ANY, (req, res) => {
-  res.json({ doc_types: DOC_TYPES, revoke_reasons: REVOKE_REASONS, roles: ROLES, restore_days: RESTORE_DAYS });
+  res.json({ doc_types: DOC_TYPES, revoke_reasons: REVOKE_REASONS, roles: ROLES, restore_days: RESTORE_DAYS, claim_days: CLAIM_DAYS });
 });
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
@@ -189,7 +192,7 @@ router.get('/documents/:docId', ANY, async (req, res) => {
       document: doc,
       issued_by_user: who(doc.issued_by_user),
       revoked_by_user: who(doc.revoked_by),
-      verify_url: buildVerifyUrl(doc.doc_id, req.tenant.subdomain),
+      verify_url: await buildVerifyUrl(doc, req.tenant.subdomain),
       can_restore: doc.status === 'revoked' && !doc.superseded_by && revokedAt &&
                    (Date.now() - revokedAt.getTime()) < RESTORE_DAYS * 864e5,
       scans: scans.rows,
@@ -206,7 +209,7 @@ router.post('/documents', ISSUERS, async (req, res) => {
     const doc = await insertDocument(client, req.tenant, req.staff, input.values);
     await logActivity(req, { action: 'document_issued', targetType: 'document', targetId: doc.doc_id,
       detail: { doc_type: doc.doc_type, matric_number: input.values.metadata.matric_number } });
-    res.status(201).json({ document: doc, verify_url: buildVerifyUrl(doc.doc_id, req.tenant.subdomain) });
+    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain) });
   } catch (e) { sendErr(res, e, 'Failed to issue document.'); }
   finally { client.release(); }
 });
@@ -275,7 +278,7 @@ router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
       detail: { replaced_by: doc.doc_id, note } });
     await logActivity(req, { action: 'document_reissued', targetType: 'document', targetId: doc.doc_id,
       detail: { replaces: req.params.docId, note } });
-    res.status(201).json({ document: doc, verify_url: buildVerifyUrl(doc.doc_id, req.tenant.subdomain) });
+    res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain) });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     sendErr(res, e, 'Failed to reissue document.');
@@ -300,15 +303,33 @@ router.get('/documents/:docId/qr', ISSUERS, async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Document not found.' });
     let buffer;
     if (req.query.size === 'print') {
-      buffer = await QRCode.toBuffer(buildVerifyUrl(doc.doc_id, req.tenant.subdomain),
+      buffer = await QRCode.toBuffer(await buildVerifyUrl(doc, req.tenant.subdomain),
         { type: 'png', errorCorrectionLevel: 'H', margin: 4, width: 1200 });
     } else {
-      ({ buffer } = await generateQRBuffer(doc.doc_id, req.tenant));
+      ({ buffer } = await generateQRBuffer(doc, req.tenant));
     }
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', `attachment; filename="qr-${doc.doc_id}${req.query.size === 'print' ? '-print' : ''}.png"`);
     res.send(buffer);
   } catch (e) { sendErr(res, e, 'Failed to generate QR code.'); }
+});
+
+// Graduate claim code: shown once, handed to the graduate with the document.
+// The portal won't link this matric number to an account without it. A new
+// code voids the previous unused one.
+router.post('/documents/:docId/claim-code', ISSUERS, async (req, res) => {
+  try {
+    const doc = await loadDoc(req.tenant.id, req.params.docId);
+    if (!doc) return res.status(404).json({ error: 'Document not found.' });
+    const matric = doc.metadata?.matric_number;
+    if (!matric) return res.status(400).json({ error: 'This document has no matric number, so there is nothing for a graduate to claim.' });
+    if (doc.status !== 'active') return res.status(409).json({ error: 'Claim codes are only for active documents.' });
+    const { code, expires_at } = await issueClaimCode(pool, req.tenant.id, matric, req.staff.id);
+    await logActivity(req, { action: 'claim_code_issued', targetType: 'document', targetId: doc.doc_id,
+      detail: { matric_number: matric } });
+    res.status(201).json({ code, expires_at, matric_number: matric, holder: doc.issued_to,
+      portal_url: `${tenantBaseUrl(req.tenant.subdomain)}/student.html` });
+  } catch (e) { sendErr(res, e, 'Failed to create a claim code.'); }
 });
 
 // ── Registrar search (staff only; never exposed publicly) ───────────────────

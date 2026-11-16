@@ -1,10 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
-const { hashPin, generateSalt, requireStudentAuth } = require('../middleware/studentAuth');
+const { hashPin, requireStudentAuth } = require('../middleware/studentAuth');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { initializeTransaction } = require('../utils/paystack');
-const { tenantBaseUrl } = require('../utils/docUtils');
+const { tenantBaseUrl, buildVerifyUrl } = require('../utils/docUtils');
 
 const BUNDLES = [
   { id:1, label:'1 verification',   tokens:1,  amountKobo:100000 },
@@ -15,42 +15,138 @@ const BUNDLES = [
 
 router.get('/bundles', (req, res) => res.json({ bundles: BUNDLES }));
 
-router.post('/register', async (req, res) => {
-  const { matric_number, institution, full_name, email, phone, pin } = req.body;
+// What the sign-up form needs to know about this school
+router.get('/config', async (req, res) => {
+  try { res.json({ claim_required: await claimRequired(pool, req.tenant.id) }); }
+  catch (e) { res.status(500).json({ error: 'Failed to load.' }); }
+});
+
+const { hashPassword, verifyPassword } = require('../utils/staffAuth');
+const { redeemClaimCode, claimRequired } = require('../utils/claims');
+
+const PIN_RE = /^\d{4,8}$/;
+const publicStudent = (s, extra = {}) => ({
+  id: s.id, matric_number: s.matric_number, institution: s.institution, full_name: s.full_name,
+  email: s.email, token_balance: s.token_balance, verified: !!s.verified_at, ...extra,
+});
+
+function startSession(req, student) {
+  req.session.studentId  = student.id;
+  req.session.matric     = student.matric_number;
+  req.session.tenantId   = req.tenant.id;
+  req.session.studentVer = student.session_version || 0;
+}
+
+// The signed-in graduate, or null if the account changed hands (a claim by
+// the real graduate bumps session_version and ends every older session)
+async function currentStudent(req) {
+  const r = await pool.query(
+    `SELECT id, matric_number, institution, full_name, email, phone, token_balance,
+            notify_email, notify_sms, created_at, verified_at, session_version
+     FROM student_tokens WHERE id = $1 AND tenant_id = $2`,
+    [req.session.studentId, req.tenant.id]);
+  const s = r.rows[0];
+  if (!s || (s.session_version || 0) !== (req.session.studentVer || 0)) return null;
+  return s;
+}
+
+// Documents and their scan history are only shown once the account has
+// proved it belongs to the graduate (claim code), where the school asks for it
+async function requireClaimed(req, res) {
+  const s = await currentStudent(req);
+  if (!s) { req.session.destroy(() => {}); res.status(401).json({ error: 'Please log in again.' }); return null; }
+  if (!s.verified_at && await claimRequired(pool, req.tenant.id)) {
+    res.status(403).json({ error: 'Enter the claim code from your institution to see your documents.', claim_required: true });
+    return null;
+  }
+  return s;
+}
+
+router.post('/register', loginLimiter, async (req, res) => {
+  const { matric_number, institution, full_name, email, phone, pin, claim_code } = req.body;
   const tenantId = req.tenant.id;
 
   if (!matric_number || !institution || !pin)
     return res.status(400).json({ error: 'matric_number, institution, and pin are required.' });
-  if (pin.length < 4 || pin.length > 8)
+  if (!PIN_RE.test(String(pin)))
     return res.status(400).json({ error: 'PIN must be 4-8 digits.' });
 
+  const matric = String(matric_number).trim().toUpperCase();
+  const client = await pool.connect();
   try {
-    const existing = await pool.query(
-      'SELECT id FROM student_tokens WHERE matric_number=$1 AND institution=$2 AND tenant_id=$3',
-      [matric_number.toUpperCase(), institution, tenantId]
-    );
-    if (existing.rows.length)
+    await client.query('BEGIN');
+    const required = await claimRequired(client, tenantId);
+    if (required && !claim_code) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Enter the claim code your institution gave you with your document.', claim_required: true });
+    }
+    const existing = (await client.query(
+      `SELECT id, verified_at FROM student_tokens
+       WHERE UPPER(matric_number) = $1 AND LOWER(institution) = LOWER($2) AND tenant_id = $3 FOR UPDATE`,
+      [matric, institution, tenantId])).rows[0];
+
+    if (existing && (existing.verified_at || !required)) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Student already registered. Please log in.' });
+    }
+    const claimId = required ? await redeemClaimCode(client, tenantId, matric, claim_code, existing?.id) : null;
+    if (required && !claimId) {
+      await client.query('ROLLBACK');
+      // Counts as a failed attempt for the rate limiter
+      return res.status(400).json({ error: 'That claim code is not valid for this matric number, or it has expired or been used. Ask your institution for a new one.' });
+    }
 
-    const salt     = generateSalt();
-    const pin_hash = hashPin(pin, salt);
-
-    const result = await pool.query(
-      `INSERT INTO student_tokens
-         (matric_number, institution, full_name, email, phone, pin_hash, pin_salt, tenant_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING id, matric_number, institution, full_name, email, token_balance`,
-      [matric_number.toUpperCase(), institution, full_name||null,
-       email||null, phone||null, pin_hash, salt, tenantId]
-    );
-    req.session.studentId = result.rows[0].id;
-    req.session.matric    = result.rows[0].matric_number;
-    req.session.tenantId  = tenantId;
-    res.status(201).json({ student: result.rows[0] });
+    const pin_hash = hashPassword(String(pin));
+    let row;
+    if (existing) {
+      // An unclaimed account for this matric number was opened by someone
+      // without a code. The real graduate takes it over; older sessions end.
+      row = (await client.query(
+        `UPDATE student_tokens SET pin_hash = $1, pin_salt = '', full_name = COALESCE($2, full_name),
+                email = COALESCE($3, email), phone = COALESCE($4, phone),
+                verified_at = NOW(), session_version = session_version + 1, updated_at = NOW()
+         WHERE id = $5 RETURNING *`,
+        [pin_hash, full_name || null, email || null, phone || null, existing.id])).rows[0];
+    } else {
+      row = (await client.query(
+        `INSERT INTO student_tokens
+           (matric_number, institution, full_name, email, phone, pin_hash, pin_salt, tenant_id, verified_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'',$7,${required ? 'NOW()' : 'NULL'})
+         RETURNING *`,
+        [matric, institution, full_name || null, email || null, phone || null, pin_hash, tenantId])).rows[0];
+      if (claimId) await client.query('UPDATE student_claim_codes SET used_by = $1 WHERE id = $2', [row.id, claimId]);
+    }
+    await client.query('COMMIT');
+    startSession(req, row);
+    res.status(201).json({ student: publicStudent(row, { claim_required: required }) });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Register error:', err);
     res.status(500).json({ error: 'Registration failed.' });
-  }
+  } finally { client.release(); }
+});
+
+// A signed-in graduate whose account isn't claimed yet enters the code here
+router.post('/claim', requireStudentAuth, loginLimiter, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const s = await currentStudent(req);
+    if (!s) return res.status(401).json({ error: 'Please log in again.' });
+    if (s.verified_at) return res.json({ student: publicStudent(s) });
+    await client.query('BEGIN');
+    if (!(await redeemClaimCode(client, req.tenant.id, s.matric_number, req.body.claim_code, s.id))) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'That claim code is not valid for this matric number, or it has expired or been used.' });
+    }
+    const row = (await client.query(
+      'UPDATE student_tokens SET verified_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *', [s.id])).rows[0];
+    await client.query('COMMIT');
+    res.json({ student: publicStudent(row) });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Claim error:', err);
+    res.status(500).json({ error: 'Could not check the claim code.' });
+  } finally { client.release(); }
 });
 
 router.post('/login', loginLimiter, async (req, res) => {
@@ -61,28 +157,27 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'matric_number, institution, and pin are required.' });
 
   try {
-    // Fetch salt first then verify PIN
-    const saltResult = await pool.query(
-      `SELECT id, matric_number, institution, full_name, email,
-              token_balance, pin_hash, COALESCE(pin_salt,'') as pin_salt
-       FROM student_tokens
+    const r = await pool.query(
+      `SELECT *, COALESCE(pin_salt,'') AS pin_salt FROM student_tokens
        WHERE LOWER(matric_number)=LOWER($1) AND LOWER(institution)=LOWER($2) AND tenant_id=$3`,
       [matric_number, institution, tenantId]
     );
-    if (!saltResult.rows.length)
-      return res.status(401).json({ error: 'Invalid matric number, institution, or PIN.' });
+    const student = r.rows[0];
+    let ok = false;
+    if (student && String(student.pin_hash || '').startsWith('scrypt$')) {
+      ok = verifyPassword(String(pin), student.pin_hash);
+    } else if (student) {
+      // Older accounts: SHA-256 PIN hash. Check it, then move it to scrypt.
+      const a = Buffer.from(hashPin(String(pin), student.pin_salt));
+      const b = Buffer.from(String(student.pin_hash || ''));
+      ok = a.length === b.length && require('crypto').timingSafeEqual(a, b);
+      if (ok) await pool.query(`UPDATE student_tokens SET pin_hash = $1, pin_salt = '' WHERE id = $2`,
+        [hashPassword(String(pin)), student.id]);
+    }
+    if (!ok) return res.status(401).json({ error: 'Invalid matric number, institution, or PIN.' });
 
-    const student  = saltResult.rows[0];
-    const expected = hashPin(pin, student.pin_salt);
-    if (expected !== student.pin_hash)
-      return res.status(401).json({ error: 'Invalid matric number, institution, or PIN.' });
-
-    req.session.studentId = student.id;
-    req.session.matric    = student.matric_number;
-    req.session.tenantId  = tenantId;
-    res.json({ student: { id:student.id, matric_number:student.matric_number,
-      institution:student.institution, full_name:student.full_name,
-      email:student.email, token_balance:student.token_balance } });
+    startSession(req, student);
+    res.json({ student: publicStudent(student, { claim_required: await claimRequired(pool, tenantId) }) });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed.' });
@@ -96,32 +191,48 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', requireStudentAuth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, matric_number, institution, full_name, email, phone,
-              token_balance, notify_email, notify_sms, created_at
-       FROM student_tokens WHERE id=$1 AND tenant_id=$2`,
-      [req.session.studentId, req.tenant.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'Student not found.' });
-    res.json({ student: result.rows[0] });
+    const s = await currentStudent(req);
+    if (!s) { req.session.destroy(() => {}); return res.status(401).json({ error: 'Please log in again.' }); }
+    const { session_version, verified_at, ...rest } = s;
+    res.json({ student: { ...rest, verified: !!verified_at, claim_required: await claimRequired(pool, req.tenant.id) } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch profile.' });
+  }
+});
+
+// The graduate's own documents, once the account is claimed
+router.get('/my-documents', requireStudentAuth, async (req, res) => {
+  try {
+    const student = await requireClaimed(req, res);
+    if (!student) return;
+    const r = await pool.query(
+      `SELECT doc_id, title, doc_type, issued_by, issue_date, expiry_date, status, tenant_id, issued_to
+       FROM documents
+       WHERE LOWER(metadata->>'matric_number') = LOWER($1) AND tenant_id = $2 AND status <> 'superseded'
+       ORDER BY issue_date DESC, created_at DESC LIMIT 100`,
+      [student.matric_number, req.tenant.id]);
+    const documents = [];
+    for (const d of r.rows) {
+      const { tenant_id, issued_to, ...rest } = d;
+      documents.push({ ...rest, verify_url: await buildVerifyUrl(d, req.tenant.subdomain) });
+    }
+    res.json({ documents, matric_number: student.matric_number });
+  } catch (err) {
+    console.error('My documents error:', err);
+    res.status(500).json({ error: 'Failed to load documents.' });
   }
 });
 
 router.get('/log', requireStudentAuth, async (req, res) => {
   const tenantId = req.tenant.id;
   try {
-    const student = await pool.query(
-      'SELECT matric_number FROM student_tokens WHERE id=$1 AND tenant_id=$2',
-      [req.session.studentId, tenantId]
-    );
-    if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
+    const student = await requireClaimed(req, res);
+    if (!student) return;
 
     const docs = await pool.query(
       `SELECT doc_id FROM documents
        WHERE LOWER(metadata->>'matric_number')=LOWER($1) AND tenant_id=$2`,
-      [student.rows[0].matric_number, tenantId]
+      [student.matric_number, tenantId]
     );
     const docIds = docs.rows.map(d => d.doc_id);
     if (!docIds.length) return res.json({ logs:[], total:0 });
@@ -237,13 +348,10 @@ router.get('/replacement-pdf/:docId', requireStudentAuth, async (req, res) => {
   const tenantId  = req.tenant.id;
 
   try {
-    const student = await pool.query(
-      'SELECT matric_number, institution FROM student_tokens WHERE id=$1 AND tenant_id=$2',
-      [req.session.studentId, tenantId]
-    );
-    if (!student.rows.length) return res.status(404).json({ error:'Student not found.' });
+    const student = await requireClaimed(req, res);
+    if (!student) return;
 
-    const { matric_number, institution } = student.rows[0];
+    const { matric_number, institution } = student;
     const docResult = await pool.query(
       `SELECT * FROM documents
        WHERE doc_id=$1 AND tenant_id=$2
