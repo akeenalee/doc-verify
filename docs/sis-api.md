@@ -58,6 +58,8 @@ Restrict the endpoint to read-only access for these fields. If the SIS sits behi
 
 Any other fields are ignored. Keep the body under 20 kB.
 
+Once a student is found, the record is the authority. UniVerify prints the record's name, programme, faculty, department, class and years, and staff can't change them. The issue form shows them greyed out, and the server ignores any other values that are sent. A name that doesn't match the record blocks issue. Fields the record leaves empty can be filled in by staff. To correct a detail, correct it in the SIS.
+
 ### 404: no such student
 
 Any body. UniVerify then checks the school's uploaded student lists, if any.

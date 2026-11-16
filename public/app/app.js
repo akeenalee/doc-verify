@@ -435,9 +435,16 @@
     const FILL = { issued_to: 'full_name', programme: 'programme', degree_class: 'degree_class', faculty: 'faculty',
                    department: 'department', entry_year: 'entry_year', graduation_year: 'graduation_year' };
     let looked = '';
+    // Details from a found record are locked: the server prints the record's values anyway
+    const lock = (rec, src) => Object.entries(FILL).forEach(([field, key]) => {
+      const inp = $('i-' + field), on = !!(rec && rec[key]);
+      inp.readOnly = on; inp.classList.toggle('locked', on);
+      inp.title = on ? `From ${src}. Correct it there, not here.` : '';
+    });
     const lookup = async () => {
       const mv = $('i-matric_number').value.trim().toUpperCase();
       const box = $('i-rec');
+      lock(null);
       if (!mv) { box.className = 'alert'; return; }
       looked = mv;
       box.className = 'alert show info'; box.textContent = 'Looking up ' + mv + '...';
@@ -456,10 +463,11 @@
         const rec = r.record;
         // The record is the authority: a field it leaves out is cleared, not kept from an earlier student
         for (const [field, key] of Object.entries(FILL)) $('i-' + field).value = rec[key] || '';
+        lock(rec, SOURCE[r.source] || 'student records');
         const t = $('i-title');
         if (!t.value && rec.programme && ['Certificate', 'Diploma'].includes($('i-doc_type').value)) t.value = rec.programme;
         const status = rec.status ? rec.status.charAt(0).toUpperCase() + rec.status.slice(1) : 'not given';
-        const head = `Found in ${SOURCE[r.source] || 'student records'}: ${rec.full_name}, status ${status}. The form has been filled from the record.`;
+        const head = `Found in ${SOURCE[r.source] || 'student records'}: ${rec.full_name}, status ${status}. Greyed fields come from the record and can't be changed here.`;
         if (r.check.error) { box.className = 'alert show err'; box.textContent = `${head} ${r.check.error}`; }
         else if (r.check.warning) { box.className = 'alert show warn'; box.textContent = `${head} ${r.check.warning}`; }
         else { box.className = 'alert show ok'; box.textContent = head + sisNote; }
@@ -469,6 +477,7 @@
     $('i-matric_number').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); lookup(); } };
     $('i-matric_number').onchange = () => { if ($('i-matric_number').value.trim().toUpperCase() !== looked) lookup(); };
     $('i-doc_type').onchange = () => { if (looked) lookup(); };
+    if (reissueId && m.matric_number) lookup();   // reissue: lock what the record fixes
 
     $('issue-form').onsubmit = async e => {
       e.preventDefault();
