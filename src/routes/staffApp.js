@@ -14,7 +14,7 @@ const { createInvite, refreshInvite } = require('../utils/staffInvite');
 const { generateDocId, buildVerifyUrl, generateQRBuffer, tenantBaseUrl } = require('../utils/docUtils');
 const { issueClaimCode, CLAIM_DAYS } = require('../utils/claims');
 const { activeKey } = require('../utils/signing');
-const { registrationCheck, markIssued } = require('../utils/studentRecords');
+const { registrationCheck, markIssued, lockRecord } = require('../utils/studentRecords');
 const { generatePDF } = require('../utils/pdfGenerator');
 
 const ANY     = requireStaff();
@@ -237,18 +237,33 @@ router.get('/documents/:docId', ANY, async (req, res) => {
   } catch (e) { sendErr(res, e, 'Failed to load document.'); }
 });
 
+// Validate the form, check the student against the school's records and, when
+// found, take the printed details from the record instead of what was sent.
+// Returns { status, error, warnings } on failure, else { values, check }.
+async function checkedInput(body, tenant) {
+  const first = documentInput(body, tenant);
+  if (first.errors) return { status: 400, error: first.errors.join(' ') };
+  const v = first.values;
+  const check = await registrationCheck(tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
+  if (check.errors.length) return { status: 422, error: check.errors.join(' '), warnings: check.warnings };
+  if (!check.record) return { values: v, check };
+  const d = { ...body, full_name: body.issued_to };
+  check.replaced = lockRecord(d, check.record);
+  d.issued_to = d.full_name;
+  return { values: documentInput(d, tenant).values, check };
+}
+
 router.post('/documents', ISSUERS, async (req, res) => {
-  const input = documentInput(req.body, req.tenant);
-  if (input.errors) return res.status(400).json({ error: input.errors.join(' ') });
   const client = await pool.connect();
   try {
-    const v = input.values;
-    const check = await registrationCheck(req.tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
-    if (check.errors.length) return res.status(422).json({ error: check.errors.join(' '), warnings: check.warnings });
+    const input = await checkedInput(req.body, req.tenant);
+    if (input.error) return res.status(input.status).json({ error: input.error, warnings: input.warnings });
+    const { values: v, check } = input;
     const doc = await insertDocument(client, req.tenant, req.staff, v);
     await markIssued(pool, req.tenant.id, [v.metadata.matric_number]);
     await logActivity(req, { action: 'document_issued', targetType: 'document', targetId: doc.doc_id,
       detail: { doc_type: doc.doc_type, matric_number: v.metadata.matric_number, record_source: check.source,
+                replaced_from_record: check.replaced && check.replaced.length ? check.replaced : undefined,
                 warnings: check.warnings.length ? check.warnings : undefined } });
     res.status(201).json({ document: doc, verify_url: await buildVerifyUrl(doc, req.tenant.subdomain),
                            record_source: check.source, warnings: check.warnings });
@@ -297,14 +312,11 @@ router.post('/documents/:docId/restore', OWNER, async (req, res) => {
 router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
   const note = clean(req.body.note, 500);
   if (!note) return res.status(400).json({ error: 'Say what was corrected.' });
-  const input = documentInput(req.body, req.tenant);
-  if (input.errors) return res.status(400).json({ error: input.errors.join(' ') });
-  let check;
-  try {
-    const v = input.values;
-    check = await registrationCheck(req.tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
-  } catch (e) { return sendErr(res, e, 'Failed to check student records.'); }
-  if (check.errors.length) return res.status(422).json({ error: check.errors.join(' '), warnings: check.warnings });
+  let input;
+  try { input = await checkedInput(req.body, req.tenant); }
+  catch (e) { return sendErr(res, e, 'Failed to check student records.'); }
+  if (input.error) return res.status(input.status).json({ error: input.error, warnings: input.warnings });
+  const check = input.check;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

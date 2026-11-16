@@ -123,7 +123,7 @@ async function validateRows(tenant, docType, records) {
   }
 
   // Student records (SIS or uploaded list): is each one a registered student,
-  // and does the name and status fit? Blanks the file left are filled from the record.
+  // and does the name and status fit? The printed details then come from the record.
   const required = await SR.requireRegistered(tenant.id);
   if (matrics.length && (required || await SR.hasRecords(tenant.id))) {
     const found = await SR.lookupMany(tenant.id, matrics);
@@ -133,9 +133,10 @@ async function validateRows(tenant, docType, records) {
       const v = SR.assess(lk, docType, row.data.full_name, required);
       row.errors.push(...v.errors);
       row.warnings.push(...v.warnings);
-      if (lk && lk.found) {
-        for (const f of ['programme', 'faculty', 'department', 'degree_class', 'entry_year', 'graduation_year'])
-          if (!row.data[f] && lk.record[f]) row.data[f] = lk.record[f];
+      if (lk && lk.found && !v.errors.length) {
+        // The record is the authority: its details replace the file's
+        const replaced = SR.lockRecord(row.data, lk.record);
+        if (replaced.length) row.warnings.push(`Taken from student records instead of the file: ${replaced.map(f => f.replace(/_/g, ' ')).join(', ')}.`);
         row.data.record_source = lk.source;
       }
     }
