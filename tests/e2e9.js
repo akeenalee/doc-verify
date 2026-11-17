@@ -118,10 +118,23 @@ const lookup = (host, opts) => new Promise(res => SR.safeLookup(host, opts, (err
   if (r.status >= 300) console.log('  register said', r.status, JSON.stringify(r.body));
 
   // Legacy pages put user agents and names inside attributes, so their esc() must handle quotes
-  for (const p of ['index.html', 'admin.html', 'student.html', 'onboard.html']) {
+  for (const p of ['js/index.js', 'js/admin.js', 'js/student.js', 'js/onboard.js']) {
     const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', p), 'utf8');
     ok(/'"':'&quot;'/.test(page), `${p} escapes quotes in attributes`);
   }
+
+  // CSP: no inline scripts or inline event handlers anywhere (script-src 'self')
+  const fs = require('fs'), pth = require('path');
+  const pub = pth.join(__dirname, '..', 'public');
+  const files = [...fs.readdirSync(pub).map(f => pth.join(pub, f)), ...fs.readdirSync(pth.join(pub, 'app')).map(f => pth.join(pub, 'app', f))]
+    .filter(f => /\.(html|js)$/.test(f));
+  const bad = files.filter(f => {
+    const s = fs.readFileSync(f, 'utf8');
+    return /<script(?![^>]*\bsrc=)[^>]*>/i.test(s) || /\son(click|load|change|submit|input|error|keyup|keydown|focus|blur|mouseover)=["']/i.test(s);
+  });
+  ok(!bad.length, 'no inline scripts or onclick-style handlers in public pages' + (bad.length ? ': ' + bad.join(', ') : ''));
+  const csp = (await new Promise(res => http.get({ host: 'localhost', port: 3000, path: '/app/login.html', headers: { Host: 'lasu.localhost:3000' } }, x => { x.resume(); res(x.headers['content-security-policy'] || ''); })));
+  ok(/script-src 'self'(;|$)/.test(csp) && /script-src-attr 'none'/.test(csp), "CSP allows scripts from this site's files only");
 
   await pool.end();
 })().catch(e => { console.log('FAIL crashed: ' + e.stack); process.exitCode = 1; pool.end(); });
