@@ -37,10 +37,6 @@
     err.classList.remove('show');
 
     const body = {
-      full_name: document.getElementById('full_name').value.trim(),
-      email:     document.getElementById('email').value.trim(),
-      company:   document.getElementById('company').value.trim(),
-      role:      document.getElementById('role').value.trim(),
       username:  document.getElementById('username').value.trim(),
       password:  document.getElementById('password').value,
       code:      document.getElementById('code').value.trim(),
@@ -76,13 +72,13 @@
         err.textContent = data.error || 'Invalid credentials. Please try again.';
         err.classList.add('show');
         btn.disabled = false;
-        btn.textContent = 'Access Demo Platform';
+        btn.textContent = 'Sign in';
       }
     } catch (e) {
       err.textContent = 'Network error. Please try again.';
       err.classList.add('show');
       btn.disabled = false;
-      btn.textContent = 'Access Demo Platform';
+      btn.textContent = 'Sign in';
     }
   }
 
