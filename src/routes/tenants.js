@@ -125,8 +125,10 @@ router.get('/', async (req, res) => {
               t.contact_email, t.primary_colour, t.accent_colour, t.logo_url,
               t.plan, t.active, t.created_at,
               (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id)::int AS documents,
-              p.token AS presenter_token, p.expires_at AS presenter_expires_at
+              p.token AS presenter_token, p.expires_at AS presenter_expires_at,
+              po.active AS payout_active, po.bank_name AS payout_bank, po.account_last4 AS payout_last4
        FROM tenants t
+       LEFT JOIN tenant_payouts po ON po.tenant_id = t.id
        LEFT JOIN LATERAL (
          SELECT dt.token, dt.expires_at FROM demo_tokens dt
          WHERE dt.tenant_id = t.id AND dt.label = $1 AND dt.is_active
@@ -287,6 +289,55 @@ router.post('/:id/owner-invite', async (req, res) => {
     console.error('Owner invite error:', e);
     res.status(500).json({ error: 'Failed to invite owner.' });
   }
+});
+
+// ── Payouts (Paystack subaccounts) ──────────────────────────────────────────
+const payouts = require('../utils/payouts');
+const { listBanks } = require('../utils/paystack');
+const idOk = id => /^[0-9a-f-]{36}$/i.test(id);
+const logPayout = (tenantId, action, detail) => pool.query(
+  `INSERT INTO activity_log (tenant_id, actor, action, target_type, target_id, detail)
+   VALUES ($1, 'Innovation Lens', $2, 'tenant', $4, $3)`, [tenantId, action, JSON.stringify(detail), String(tenantId)]);
+
+// GET /admin-api/tenants/banks  Nigerian banks Paystack can settle to
+router.get('/banks', async (req, res) => {
+  try { res.json({ banks: await listBanks() }); }
+  catch (e) { res.status(502).json({ error: 'Paystack could not be reached: ' + e.message }); }
+});
+
+// GET /admin-api/tenants/:id/payout
+router.get('/:id/payout', async (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'Institution not found.' });
+  try { res.json({ payout: payouts.publicView(await payouts.getPayout(req.params.id)) }); }
+  catch (e) { console.error('Payout read error:', e.message); res.status(500).json({ error: 'Failed to load payout.' }); }
+});
+
+// PUT /admin-api/tenants/:id/payout  { bank_code, account_number, platform_fee_bps?, fee_bearer? }
+// Checks the account with Paystack, then creates or updates the subaccount.
+router.put('/:id/payout', async (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'Institution not found.' });
+  try {
+    const t = await pool.query('SELECT id, name, subdomain, contact_email FROM tenants WHERE id = $1 AND subdomain <> $2', [req.params.id, ROOT_TENANT]);
+    if (!t.rows.length) return res.status(404).json({ error: 'Institution not found.' });
+    const p = await payouts.setupPayout(t.rows[0], req.body || {}, 'Innovation Lens');
+    await logPayout(t.rows[0].id, 'payout_set_up', { bank: p.bank_name, account: '****' + p.account_last4, fee_percent: p.platform_fee_bps / 100 });
+    res.json({ payout: payouts.publicView(p) });
+  } catch (e) {
+    if (e && e.status) return res.status(e.status).json({ error: e.message });
+    console.error('Payout setup error:', e);
+    res.status(500).json({ error: 'Failed to set up payout.' });
+  }
+});
+
+// DELETE /admin-api/tenants/:id/payout  Stop splitting; payments go to Innovation Lens
+router.delete('/:id/payout', async (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'Institution not found.' });
+  try {
+    const p = await payouts.pausePayout(req.params.id, 'Innovation Lens');
+    if (!p) return res.status(404).json({ error: 'This institution has no payout set up.' });
+    await logPayout(req.params.id, 'payout_paused', {});
+    res.json({ payout: payouts.publicView(p) });
+  } catch (e) { console.error('Payout pause error:', e.message); res.status(500).json({ error: 'Failed to pause payout.' }); }
 });
 
 module.exports = router;

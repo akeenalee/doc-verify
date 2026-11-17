@@ -1,3 +1,5 @@
+DELETE FROM tenant_payouts WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM token_purchases WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
 DELETE FROM batches WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
 DELETE FROM verification_log WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
 DELETE FROM activity_log WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
