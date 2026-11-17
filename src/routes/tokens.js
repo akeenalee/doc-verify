@@ -4,6 +4,7 @@ const pool    = require('../db/pool');
 const { hashPin, requireStudentAuth } = require('../middleware/studentAuth');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { initializeTransaction } = require('../utils/paystack');
+const { settleTokenPurchase } = require('../utils/payments');
 const { tenantBaseUrl, buildVerifyUrl } = require('../utils/docUtils');
 
 const BUNDLES = [
@@ -302,24 +303,9 @@ router.get('/verify-payment', async (req, res) => {
     const txn = await verifyTransaction(reference);
     if (txn.status !== 'success') return res.redirect('/student.html?error=payment_failed');
 
-    const meta     = txn.metadata;
-    const tenantId = meta.tenant_id;
-    const existing = await pool.query(
-      `SELECT id FROM token_purchases WHERE paystack_ref=$1 AND paystack_status='success'`,
-      [reference]
-    );
-    if (!existing.rows.length) {
-      await pool.query(
-        `UPDATE token_purchases SET paystack_status='success', completed_at=NOW() WHERE paystack_ref=$1`,
-        [reference]
-      );
-      await pool.query(
-        `UPDATE student_tokens SET token_balance=token_balance+$1, updated_at=NOW()
-         WHERE matric_number=$2 AND institution=$3 AND tenant_id=$4`,
-        [meta.tokens, meta.matric_number, meta.institution, tenantId]
-      );
-    }
-    res.redirect(`/student.html?success=tokens_added&tokens=${meta.tokens}`);
+    const r = await settleTokenPurchase(txn);
+    if (!r.ok) return res.redirect('/student.html?error=verification_failed');
+    res.redirect(`/student.html?success=tokens_added&tokens=${r.credited || r.tokens}`);
   } catch (err) {
     console.error('Verify payment error:', err);
     res.redirect('/student.html?error=verification_failed');
