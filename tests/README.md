@@ -39,3 +39,5 @@ The runner starts its own server for each suite with test-only secrets, so nothi
 ## UI scripts
 
 `ui4.js` to `ui6.js` drive the workspace in Chromium with Playwright and save screenshots to the temp folder. They expect a server already running on :3000 with the same environment the runner uses (`ADMIN_USER`, `ADMIN_PASS`, `TEST_DATABASE_URL`). They aren't part of `npm test`.
+
+`ui-csp.js` drives every page (demo dashboard, IL admin, holder portal, pay page, staff workspace, verify page on a phone) under the real Content-Security-Policy and fails on any blocked script or page error. Run it the same way, against a freshly reset database.
