@@ -37,15 +37,15 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
 (async () => {
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
 
   // ── Staff TOTP secret encrypted at rest ──
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   const token = new URL(r.body.link).searchParams.get('token');
   r = await owner('POST', '/app-api/auth/invite/start', { token, password: 'Registrar2026', full_name: 'Dr Registrar' });
   const secret = r.body.secret;
-  let row = (await pool.query("SELECT id, totp_secret FROM tenant_users WHERE LOWER(email) = 'registrar@lasu.edu.ng'")).rows[0];
+  let row = (await pool.query("SELECT id, totp_secret FROM tenant_users WHERE LOWER(email) = 'registrar@dsu.example'")).rows[0];
   ok(row.totp_secret.startsWith('v1:') && !row.totp_secret.includes(secret), 'TOTP secret stored encrypted, never in plain');
   r = await owner('POST', '/app-api/auth/invite/confirm', { token, code: code(secret) });
   ok(r.status === 200, 'setup confirmed with a code from the encrypted secret');
@@ -56,30 +56,30 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
     if (a.status !== 200) return a;
     return c('POST', '/app-api/auth/verify', { code: totp });
   };
-  const owner2 = client('lasu.localhost:3000');
+  const owner2 = client('dsu.localhost:3000');
   const c1 = code(secret);
-  r = await signIn(owner2, 'registrar@lasu.edu.ng', 'Registrar2026', c1);
+  r = await signIn(owner2, 'registrar@dsu.example', 'Registrar2026', c1);
   ok(r.status === 200, 'owner signs in with password and code');
-  const owner3 = client('lasu.localhost:3000');
-  r = await signIn(owner3, 'registrar@lasu.edu.ng', 'Registrar2026', c1);
+  const owner3 = client('dsu.localhost:3000');
+  r = await signIn(owner3, 'registrar@dsu.example', 'Registrar2026', c1);
   ok(r.status === 401, 'the same code used a second time is refused');
   const last = (await pool.query('SELECT totp_last_step FROM tenant_users WHERE id = $1', [row.id])).rows[0].totp_last_step;
   ok(Math.abs(Number(last) - Math.floor(Date.now() / 30000)) <= 1, 'last used time step recorded');
   // Next window's code works (the window allows one step either side)
-  r = await signIn(owner3, 'registrar@lasu.edu.ng', 'Registrar2026', A.hotp(secret, Number(last) + 1));
+  r = await signIn(owner3, 'registrar@dsu.example', 'Registrar2026', A.hotp(secret, Number(last) + 1));
   ok(r.status === 200, 'a newer code still works');
   await pool.query('UPDATE tenant_users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [row.id]);
 
   // Rows saved before encryption hold the plain secret: still work, sealed on sign-in
-  const off = await owner2('POST', '/app-api/users', { email: 'officer@lasu.edu.ng', full_name: 'Officer', roles: ['officer'] });
-  const offC = client('lasu.localhost:3000');
+  const off = await owner2('POST', '/app-api/users', { email: 'officer@dsu.example', full_name: 'Officer', roles: ['officer'] });
+  const offC = client('dsu.localhost:3000');
   const offToken = new URL(off.body.link).searchParams.get('token');
   r = await offC('POST', '/app-api/auth/invite/start', { token: offToken, password: 'Password2026x', full_name: 'Officer' });
   const offSecret = r.body.secret;
   await offC('POST', '/app-api/auth/invite/confirm', { token: offToken, code: code(offSecret) });
-  const offId = (await pool.query("SELECT id FROM tenant_users WHERE LOWER(email) = 'officer@lasu.edu.ng'")).rows[0].id;
+  const offId = (await pool.query("SELECT id FROM tenant_users WHERE LOWER(email) = 'officer@dsu.example'")).rows[0].id;
   await pool.query('UPDATE tenant_users SET totp_secret = $2, totp_last_step = NULL WHERE id = $1', [offId, offSecret]);
-  r = await signIn(client('lasu.localhost:3000'), 'officer@lasu.edu.ng', 'Password2026x', code(offSecret));
+  r = await signIn(client('dsu.localhost:3000'), 'officer@dsu.example', 'Password2026x', code(offSecret));
   ok(r.status === 200, 'account with an old plain secret still signs in');
   const sealed = (await pool.query('SELECT totp_secret FROM tenant_users WHERE id = $1', [offId])).rows[0].totp_secret;
   ok(sealed.startsWith('v1:') && !sealed.includes(offSecret), 'old plain secret sealed on that sign-in');
@@ -87,16 +87,16 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   // A sealed secret copied onto another user's row doesn't open there
   const ownerSealed = (await pool.query('SELECT totp_secret FROM tenant_users WHERE id = $1', [row.id])).rows[0].totp_secret;
   await pool.query('UPDATE tenant_users SET totp_secret = $2, totp_last_step = NULL WHERE id = $1', [offId, ownerSealed]);
-  r = await signIn(client('lasu.localhost:3000'), 'officer@lasu.edu.ng', 'Password2026x', A.hotp(secret, Math.floor(Date.now() / 30000) + 1));
+  r = await signIn(client('dsu.localhost:3000'), 'officer@dsu.example', 'Password2026x', A.hotp(secret, Math.floor(Date.now() / 30000) + 1));
   ok(r.status === 401 || r.status === 500, "another user's sealed secret copied onto this row doesn't work (fails closed)");
   await pool.query('UPDATE tenant_users SET totp_secret = $2 WHERE id = $1', [offId, sealed]);
 
   // ── Holder PIN lockout ──
   const MATRIC = 'LOCK/2020/0001';
   await pool.query(`INSERT INTO student_tokens (matric_number, institution, full_name, tenant_id, pin_hash, verified_at)
-                    VALUES ($1, $2, 'Locked Holder', $3, $4, NOW())`, [MATRIC, lasu.name, lasu.id, A.hashPassword('482913')]);
-  const holder = client('lasu.localhost:3000');
-  const login = pin => holder('POST', '/api/tokens/login', { matric_number: MATRIC, institution: lasu.name, pin });
+                    VALUES ($1, $2, 'Locked Holder', $3, $4, NOW())`, [MATRIC, dsu.name, dsu.id, A.hashPassword('482913')]);
+  const holder = client('dsu.localhost:3000');
+  const login = pin => holder('POST', '/api/tokens/login', { matric_number: MATRIC, institution: dsu.name, pin });
   r = await login('482913');
   ok(r.status === 200, 'holder signs in with the right PIN');
   for (let i = 0; i < 4; i++) await login('000000');

@@ -69,11 +69,11 @@ const lookup = (host, opts) => new Promise(res => SR.safeLookup(host, opts, (err
   // ── Staff set-up ──
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr <i>Registrar</i>' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr <i>Registrar</i>' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, r.body.link, 'Registrar2026', 'Dr <i>Registrar</i>‮'), 'owner set up');
-  let u = (await pool.query("SELECT full_name FROM tenant_users WHERE LOWER(email) = 'registrar@lasu.edu.ng'")).rows[0];
+  let u = (await pool.query("SELECT full_name FROM tenant_users WHERE LOWER(email) = 'registrar@dsu.example'")).rows[0];
   ok(u.full_name === 'Dr iRegistrar/i', 'staff name stored without markup');
 
   // ── Issuing ──
@@ -108,11 +108,11 @@ const lookup = (host, opts) => new Promise(res => SR.safeLookup(host, opts, (err
   await owner('DELETE', '/app-api/students/sis');
 
   // ── Holder portal and legacy pages ──
-  const holder = client('lasu.localhost:3000');
+  const holder = client('dsu.localhost:3000');
   r = await owner('POST', '/app-api/documents', { doc_type: 'Transcript', title: 'Transcript', issued_to: 'Tunde Bakare', matric_number: 'XSS/2026/0002' });
   const doc2 = r.body.document ? r.body.document.doc_id : r.body.doc_id;
   const claim = (await owner('POST', `/app-api/documents/${encodeURIComponent(doc2)}/claim-code`)).body.code;
-  r = await holder('POST', '/api/tokens/register', { matric_number: 'XSS/2026/0002', institution: lasu.name, full_name: '<svg onload=alert(1)>Tunde', pin: '482913', claim_code: claim });
+  r = await holder('POST', '/api/tokens/register', { matric_number: 'XSS/2026/0002', institution: dsu.name, full_name: '<svg onload=alert(1)>Tunde', pin: '482913', claim_code: claim });
   const h = (await pool.query("SELECT full_name FROM student_tokens WHERE matric_number = 'XSS/2026/0002'")).rows[0];
   ok(r.status < 300 && h && h.full_name === 'svg onload=alert(1)Tunde', 'holder name stored without markup');
   if (r.status >= 300) console.log('  register said', r.status, JSON.stringify(r.body));
@@ -133,7 +133,7 @@ const lookup = (host, opts) => new Promise(res => SR.safeLookup(host, opts, (err
     return /<script(?![^>]*\bsrc=)[^>]*>/i.test(s) || /\son(click|load|change|submit|input|error|keyup|keydown|focus|blur|mouseover)=["']/i.test(s);
   });
   ok(!bad.length, 'no inline scripts or onclick-style handlers in public pages' + (bad.length ? ': ' + bad.join(', ') : ''));
-  const csp = (await new Promise(res => http.get({ host: 'localhost', port: 3000, path: '/app/login.html', headers: { Host: 'lasu.localhost:3000' } }, x => { x.resume(); res(x.headers['content-security-policy'] || ''); })));
+  const csp = (await new Promise(res => http.get({ host: 'localhost', port: 3000, path: '/app/login.html', headers: { Host: 'dsu.localhost:3000' } }, x => { x.resume(); res(x.headers['content-security-policy'] || ''); })));
   ok(/script-src 'self'(;|$)/.test(csp) && /script-src-attr 'none'/.test(csp), "CSP allows scripts from this site's files only");
 
   await pool.end();

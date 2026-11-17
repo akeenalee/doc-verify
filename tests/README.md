@@ -17,7 +17,7 @@ End-to-end suites that drive a real server and a real PostgreSQL database throug
 
 ## Running
 
-**Never point these at production.** `reset.sql` deletes the `lasu` issuer's data before every suite. The runner refuses any database that isn't on your machine, and refuses the `DATABASE_URL` in `.env`.
+**Never point these at production.** `reset.sql` deletes the `dsu` issuer's data before every suite. The runner refuses any database that isn't on your machine, and refuses the `DATABASE_URL` in `.env`.
 
 You need a local PostgreSQL (or a throwaway Neon branch, with `ALLOW_REMOTE_TEST_DB=1`) and port 3000 free.
 

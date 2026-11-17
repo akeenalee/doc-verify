@@ -49,8 +49,8 @@ function resolveSubdomain(req) {
   // to demo.univerify.ng and verify.akeenalee.com is retired.
   if (hostname === 'verify.akeenalee.com') return 'demo';
 
-  // Production: lasu.univerify.ng → 'lasu'
-  // Local dev:  lasu.localhost    → 'lasu'
+  // Production: dsu.univerify.ng → 'dsu'
+  // Local dev:  dsu.localhost    → 'dsu'
   // Local dev:  localhost         → 'demo' (default)
 
   const parts = hostname.split('.');

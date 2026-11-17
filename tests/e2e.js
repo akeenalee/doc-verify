@@ -27,14 +27,14 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   let r = await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   ok(r.status === 200, 'IL admin login on demo');
   r = await admin('GET', '/admin-api/tenants');
-  const lasu = r.body.tenants.find(t => t.subdomain === 'lasu');
-  r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'Registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  ok(r.status === 201 && r.body.link.startsWith('http://lasu.localhost:3000/app/invite.html?token='), 'owner invite link ' + r.body.link);
+  const dsu = r.body.tenants.find(t => t.subdomain === 'dsu');
+  r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'Registrar@dsu.example', full_name: 'Dr Registrar' });
+  ok(r.status === 201 && r.body.link.startsWith('http://dsu.localhost:3000/app/invite.html?token='), 'owner invite link ' + r.body.link);
   const token = new URL(r.body.link).searchParams.get('token');
-  r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng' });
+  r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example' });
   ok(r.status === 409, 'duplicate owner invite rejected');
 
-  const owner = client('lasu.localhost:3000');
+  const owner = client('dsu.localhost:3000');
   r = await owner('GET', '/app-api/auth/invite?token=' + token);
   ok(r.status === 200 && r.body.roles[0] === 'owner', 'invite lookup ' + r.status + JSON.stringify(r.body).slice(0,200));
   const other = client('demo.localhost:3000');
@@ -57,7 +57,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
 
   // Issue, revoke, restore, reissue
   r = await owner('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'BSc Computer Science', issued_to: 'Amina Ibrahim', matric_number: 'cs/2020/001', programme: 'Computer Science', degree_class: 'First Class' });
-  ok(r.status === 201 && r.body.document.doc_id.startsWith('LASU-') && r.body.document.issued_by === 'Lagos State University', 'issue document ' + (r.body.document && r.body.document.doc_id));
+  ok(r.status === 201 && r.body.document.doc_id.startsWith('DSU-') && r.body.document.issued_by === 'Demo State University', 'issue document ' + (r.body.document && r.body.document.doc_id));
   const docId = r.body.document.doc_id;
   r = await owner('POST', '/app-api/documents', { doc_type: 'Nonsense', title: 'x', issued_to: 'y' });
   ok(r.status === 400, 'invalid issue rejected: ' + r.body.error);
@@ -84,7 +84,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok(r.status === 409, 'cannot reissue twice');
 
   // Verify page for superseded doc: no holder data, no payment
-  const pub = client('lasu.localhost:3000');
+  const pub = client('dsu.localhost:3000');
   r = await pub('GET', `/verify?doc=${docId}`);
   ok(r.status === 200 && r.body.includes('Superseded') && !r.body.includes('Amina'), 'verify: superseded page hides holder');
   r = await pub('GET', `/verify?doc=${newId}&sig=deadbeefdeadbeef`);
@@ -108,10 +108,10 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok(r.status === 200 && r.body.documents.active === '1', 'dashboard');
 
   // Users: invite an auditor, check role limits
-  r = await owner('POST', '/app-api/users', { email: 'audit@lasu.edu.ng', full_name: 'Audit Person', roles: ['auditor'] });
+  r = await owner('POST', '/app-api/users', { email: 'audit@dsu.example', full_name: 'Audit Person', roles: ['auditor'] });
   ok(r.status === 201, 'invite auditor');
   const aTok = new URL(r.body.link).searchParams.get('token'); const auditorId = r.body.user.id;
-  const aud = client('lasu.localhost:3000');
+  const aud = client('dsu.localhost:3000');
   r = await aud('POST', '/app-api/auth/invite/start', { token: aTok, password: 'Auditor2026x', full_name: 'Audit Person' });
   const aSecret = r.body.secret;
   r = await aud('POST', '/app-api/auth/invite/confirm', { token: aTok, code: A.hotp(aSecret, Math.floor(Date.now() / 30000)) });
@@ -132,21 +132,21 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   ok(r.status === 401, 'disabled user kicked out immediately');
 
   // Sign in again with password + TOTP, then recovery code; lockout
-  const fresh = client('lasu.localhost:3000');
+  const fresh = client('dsu.localhost:3000');
   r = await fresh('POST', '/app-api/auth/verify', { code: '123456' });
   ok(r.status === 401 && r.body.restart, 'verify without password step rejected');
-  r = await fresh('POST', '/app-api/auth/login', { email: 'registrar@lasu.edu.ng', password: 'Registrar2026' });
+  r = await fresh('POST', '/app-api/auth/login', { email: 'registrar@dsu.example', password: 'Registrar2026' });
   ok(r.status === 200 && r.body.next === 'totp', 'password step');
   r = await fresh('POST', '/app-api/auth/verify', { recovery_code: recovery[0].toLowerCase().replace('-', '') });
   ok(r.status === 200 && r.body.recovery_codes_left === 9, 'recovery code sign-in');
-  const again = client('lasu.localhost:3000');
-  await again('POST', '/app-api/auth/login', { email: 'registrar@lasu.edu.ng', password: 'Registrar2026' });
+  const again = client('dsu.localhost:3000');
+  await again('POST', '/app-api/auth/login', { email: 'registrar@dsu.example', password: 'Registrar2026' });
   r = await again('POST', '/app-api/auth/verify', { recovery_code: recovery[0] });
   ok(r.status === 401, 'used recovery code rejected');
 
   // Cross-tenant session use
   r = await fresh('GET', '/app-api/dashboard');
-  ok(r.status === 200, 'owner session works on lasu');
+  ok(r.status === 200, 'owner session works on dsu');
   const sid = await new Promise(res => { const c = client('demo.localhost:3000'); res(c); });
   // reuse the owner's cookie on another tenant's host
   r = await new Promise(resolve => http.get({ host: 'localhost', port: 3000, path: '/app-api/dashboard',
