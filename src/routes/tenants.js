@@ -73,10 +73,9 @@ async function issuePresenterToken(db, tenant, note) {
   return token;
 }
 
+const { cleanText, cleanNote } = require('../utils/text');
 function clean(val, max) {
-  if (val === undefined || val === null) return null;
-  const s = String(val).trim();
-  return s ? s.slice(0, max) : null;
+  return cleanText(val, max) || null;
 }
 
 function validate(body) {
@@ -89,7 +88,7 @@ function validate(body) {
     contact_email:  clean(body.contact_email, 200),
     contact_phone:  clean(body.contact_phone, 50),
     website:        clean(body.website, 200),
-    address:        clean(body.address, 1000),
+    address:        cleanNote(body.address, 1000) || null,
     logo_url:       clean(body.logo_url, 1000),
     primary_colour: clean(body.primary_colour, 7) || '#1A3A5C',
     accent_colour:  clean(body.accent_colour, 7) || '#B8860B',

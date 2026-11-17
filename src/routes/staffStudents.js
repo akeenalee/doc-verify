@@ -15,7 +15,8 @@ const ISSUERS = requireStaff('owner', 'officer', 'approver');
 const OWNER   = requireStaff('owner');
 const MAX_ROWS = 5000;
 
-const clean = (v, max = 200) => (v === undefined || v === null) ? '' : String(v).trim().slice(0, max);
+const { cleanText } = require('../utils/text');
+const clean = (v, max = 200) => cleanText(v, max);
 function bad(status, message) { const e = new Error(message); e.status = status; return e; }
 function sendErr(res, e, fallback) {
   if (e.status) return res.status(e.status).json({ error: e.message });

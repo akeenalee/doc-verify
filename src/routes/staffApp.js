@@ -35,7 +35,8 @@ const REVOKE_REASONS = {
 const RESTORE_DAYS = 7;
 const STATUSES = ['active', 'revoked', 'superseded', 'expired'];
 
-const clean = (v, max = 255) => (v === undefined || v === null) ? '' : String(v).trim().slice(0, max);
+const { cleanText, cleanNote } = require('../utils/text');
+const clean = (v, max = 255) => cleanText(v, max);
 const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ router.get('/alerts', ANY, async (req, res) => {
 
 router.post('/alerts/:id/acknowledge', ANY, async (req, res) => {
   try {
-    const note = clean(req.body.note, 500);
+    const note = cleanNote(req.body.note, 500);
     if (!note) return res.status(400).json({ error: 'Say what you checked or did.' });
     const r = await pool.query(
       `UPDATE scan_alerts SET acknowledged_at = NOW(), acknowledged_by = $3, note = $4
@@ -273,7 +274,7 @@ router.post('/documents', ISSUERS, async (req, res) => {
 
 router.post('/documents/:docId/revoke', ISSUERS, async (req, res) => {
   const reason = String(req.body.reason || '');
-  const note   = clean(req.body.note, 500);
+  const note   = cleanNote(req.body.note, 500);
   if (!REVOKE_REASONS[reason]) return res.status(400).json({ error: 'Pick a reason for revoking.' });
   if (reason === 'other' && !note) return res.status(400).json({ error: 'Add a note when the reason is Other.' });
   try {
@@ -292,7 +293,7 @@ router.post('/documents/:docId/revoke', ISSUERS, async (req, res) => {
 });
 
 router.post('/documents/:docId/restore', OWNER, async (req, res) => {
-  const note = clean(req.body.note, 500);
+  const note = cleanNote(req.body.note, 500);
   if (!note) return res.status(400).json({ error: 'Say why the document is being restored.' });
   try {
     const r = await pool.query(
@@ -310,7 +311,7 @@ router.post('/documents/:docId/restore', OWNER, async (req, res) => {
 });
 
 router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
-  const note = clean(req.body.note, 500);
+  const note = cleanNote(req.body.note, 500);
   if (!note) return res.status(400).json({ error: 'Say what was corrected.' });
   let input;
   try { input = await checkedInput(req.body, req.tenant); }

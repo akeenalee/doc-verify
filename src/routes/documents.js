@@ -1,12 +1,26 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
+const { cleanText } = require('../utils/text');
 const { generateDocId, generateQRBuffer, generateQRDataUrl } = require('../utils/docUtils');
 const { generatePDF } = require('../utils/pdfGenerator');
 
+// Flat metadata only, each value cleaned like the other fields
+function cleanMeta(m) {
+  const out = {};
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return out;
+  for (const [k, v] of Object.entries(m).slice(0, 30)) {
+    const key = cleanText(k, 50);
+    if (key && (typeof v === 'string' || typeof v === 'number')) out[key] = cleanText(v, 200);
+  }
+  return out;
+}
+
 // POST /api/documents
 router.post('/', async (req, res) => {
-  const { title, issued_to, issued_by, doc_type, expiry_date, metadata, prefix } = req.body;
+  const { expiry_date, metadata, prefix } = req.body;
+  const title = cleanText(req.body.title), issued_to = cleanText(req.body.issued_to),
+        issued_by = cleanText(req.body.issued_by), doc_type = cleanText(req.body.doc_type, 100);
   const tenantId = req.tenant.id;
 
   if (!title || !issued_to || !issued_by)
@@ -22,7 +36,7 @@ router.post('/', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
       [docId, title, issued_to, issued_by, doc_type||null,
-       expiry_date||null, metadata ? JSON.stringify(metadata) : '{}', tenantId]
+       expiry_date||null, JSON.stringify(cleanMeta(metadata)), tenantId]
     );
 
     const { dataUrl, url } = await generateQRDataUrl(result.rows[0], req.tenant);

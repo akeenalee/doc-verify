@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
+const { cleanText } = require('../utils/text');
 const { hashPin, requireStudentAuth } = require('../middleware/studentAuth');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { initializeTransaction } = require('../utils/paystack');
@@ -65,7 +66,9 @@ async function requireClaimed(req, res) {
 }
 
 router.post('/register', loginLimiter, async (req, res) => {
-  const { matric_number, institution, full_name, email, phone, pin, claim_code } = req.body;
+  const { matric_number, pin, claim_code } = req.body;
+  const institution = cleanText(req.body.institution, 200);
+  const full_name = cleanText(req.body.full_name, 200), email = cleanText(req.body.email, 200), phone = cleanText(req.body.phone, 30);
   const tenantId = req.tenant.id;
 
   if (!matric_number || !institution || !pin)
@@ -152,7 +155,8 @@ router.post('/claim', requireStudentAuth, loginLimiter, async (req, res) => {
 });
 
 router.post('/login', loginLimiter, async (req, res) => {
-  const { matric_number, institution, pin } = req.body;
+  const { matric_number, pin } = req.body;
+  const institution = cleanText(req.body.institution, 200);
   const tenantId = req.tenant.id;
 
   if (!matric_number || !institution || !pin)

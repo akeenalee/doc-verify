@@ -23,7 +23,7 @@ const http = require('http');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8'];
+const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9'];
 
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(2); }
 
