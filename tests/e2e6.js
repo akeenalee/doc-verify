@@ -39,16 +39,16 @@ const SIS = 'http://localhost:3000/mock-sis';
 (async () => {
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, r.body.link, 'Registrar2026', 'Dr Registrar'), 'owner set up');
   const mk = async (email, name, roles) => {
     const x = await owner('POST', '/app-api/users', { email, full_name: name, roles });
-    const c = client('lasu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
+    const c = client('dsu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
   };
-  const officer = await mk('officer@lasu.edu.ng', 'Officer', ['officer']);
-  const auditor = await mk('audit@lasu.edu.ng', 'Auditor', ['auditor']);
+  const officer = await mk('officer@dsu.example', 'Officer', ['officer']);
+  const auditor = await mk('audit@dsu.example', 'Auditor', ['auditor']);
   const vendor  = await mk('jobs@printco.ng', 'PrintCo', ['vendor']);
   const issue = (c, o) => c('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'B.Sc. Test', ...o });
 
@@ -81,7 +81,7 @@ const SIS = 'http://localhost:3000/mock-sis';
   ok(r.status === 200, 'owner saves SIS connection');
   r = await owner('GET', '/app-api/students');
   ok(r.body.sis.enabled && r.body.sis.has_secret && r.body.sis.base_url === SIS && !JSON.stringify(r.body).includes('test-sis-token'), 'overview shows connection, never the token');
-  const enc = (await pool.query('SELECT secret_enc FROM tenant_sis WHERE tenant_id = $1', [lasu.id])).rows[0].secret_enc;
+  const enc = (await pool.query('SELECT secret_enc FROM tenant_sis WHERE tenant_id = $1', [dsu.id])).rows[0].secret_enc;
   ok(enc.startsWith('v1:') && !enc.includes('test-sis-token'), 'token stored encrypted');
   r = await owner('PUT', '/app-api/students/sis', { base_url: SIS, auth_type: 'bearer', secret: '', enabled: true, timeout_ms: 3000 });
   ok(r.status === 200, 'saving with an empty token keeps the stored one');
@@ -171,7 +171,7 @@ const SIS = 'http://localhost:3000/mock-sis';
   ok(r.body.found && r.body.source === 'list' && r.body.record.programme === 'B.A. Theatre Arts', 'SIS on, student only in the list: found in the list');
   r = await issue(officer, { issued_to: 'Afolayan Kunle', matric_number: 'LIST/001' });
   ok(r.status === 201 && r.body.record_source === 'list', 'issued from the list');
-  const iss = (await pool.query(`SELECT issued_at FROM student_records WHERE tenant_id = $1 AND matric_number = 'LIST/001'`, [lasu.id])).rows[0];
+  const iss = (await pool.query(`SELECT issued_at FROM student_records WHERE tenant_id = $1 AND matric_number = 'LIST/001'`, [dsu.id])).rows[0];
   ok(iss && iss.issued_at, 'list record marked issued (starts the 30-day deletion clock)');
   r = await owner('GET', '/app-api/students');
   ok(r.body.records.total === 2 && r.body.records.waiting === 1 && r.body.lists[0].issued === 1, 'overview counts records and issued');
@@ -210,11 +210,11 @@ const SIS = 'http://localhost:3000/mock-sis';
   // Cleanup
   ok((await officer('DELETE', '/app-api/students/lists/' + listId)).status === 403, 'officer cannot delete a list');
   r = await owner('DELETE', '/app-api/students/lists/' + listId);
-  const left = (await pool.query('SELECT COUNT(*)::int AS n FROM student_records WHERE tenant_id = $1', [lasu.id])).rows[0].n;
+  const left = (await pool.query('SELECT COUNT(*)::int AS n FROM student_records WHERE tenant_id = $1', [dsu.id])).rows[0].n;
   ok(r.status === 200 && left === 0, 'deleting a list deletes its records');
   r = await owner('DELETE', '/app-api/students/sis');
   ok(r.status === 200 && (await owner('GET', '/app-api/students')).body.sis.configured === false, 'SIS connection removed');
-  const acts = (await pool.query(`SELECT DISTINCT action FROM activity_log WHERE tenant_id = $1 AND (action LIKE 'sis_%' OR action LIKE 'student_list%' OR action LIKE 'registered_%')`, [lasu.id])).rows.map(x => x.action).sort();
+  const acts = (await pool.query(`SELECT DISTINCT action FROM activity_log WHERE tenant_id = $1 AND (action LIKE 'sis_%' OR action LIKE 'student_list%' OR action LIKE 'registered_%')`, [dsu.id])).rows.map(x => x.action).sort();
   ok(acts.length === 7, 'all seven student-record actions logged: ' + acts.join(','));
 
   // Retention rule

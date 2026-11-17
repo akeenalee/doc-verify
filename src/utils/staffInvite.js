@@ -9,8 +9,8 @@ const { sendStaffInvite } = require('./mailer');
 const INVITE_HOURS = 72;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// baseUrl = the tenant's own origin, e.g. https://lasu.univerify.ng or
-// http://lasu.localhost:3000 when testing locally
+// baseUrl = the tenant's own origin, e.g. https://dsu.univerify.ng or
+// http://dsu.localhost:3000 when testing locally
 function inviteLink(baseUrl, token) {
   return `${String(baseUrl).replace(/\/+$/, '')}/app/invite.html?token=${token}`;
 }

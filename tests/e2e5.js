@@ -37,15 +37,15 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
 (async () => {
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, r.body.link, 'Registrar2026', 'Dr Registrar'), 'owner set up');
   const mk = async (email, name, roles) => {
     const x = await owner('POST', '/app-api/users', { email, full_name: name, roles });
-    const c = client('lasu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
+    const c = client('dsu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
   };
-  const officer = await mk('officer@lasu.edu.ng', 'Officer', ['officer']);
+  const officer = await mk('officer@dsu.example', 'Officer', ['officer']);
 
   // ── Vendor role ──────────────────────────────────────────────────────────
   r = await owner('POST', '/app-api/users', { email: 'mix@printco.ng', full_name: 'Mixed', roles: ['vendor', 'officer'] });
@@ -65,7 +65,7 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   ok(r.status === 200 && Array.isArray(r.body.jobs), 'vendor sees print jobs');
 
   // Approval still needs two internal users: owner + vendor isn't enough
-  const solo = await pool.query("SELECT COUNT(*)::int n FROM tenant_users WHERE tenant_id=$1 AND status='active' AND NOT ('vendor' = ANY(roles))", [lasu.id]);
+  const solo = await pool.query("SELECT COUNT(*)::int n FROM tenant_users WHERE tenant_id=$1 AND status='active' AND NOT ('vendor' = ANY(roles))", [dsu.id]);
   ok(solo.rows[0].n === 2, 'vendor not counted as staff for approval rules');
 
   // ── Placement specs ──────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   const svg = fs.readFileSync(dir + '/' + files.find(f => f.endsWith('.svg')), 'utf8');
   ok(svg.startsWith('<svg') && svg.includes('viewBox'), 'SVG is a vector QR');
   const url = manifest[1].split(',').pop();
-  r = await client('lasu.localhost:3000')('GET', path(url));
+  r = await client('dsu.localhost:3000')('GET', path(url));
   ok(r.status === 302, 'manifest link verifies (v2 signature)');
   ok(fs.readFileSync(dir + '/placement-spec.pdf').slice(0, 4).toString() === '%PDF', 'spec sheet in pack');
   const acts = await pool.query(`SELECT actor FROM activity_log WHERE action = 'print_pack_downloaded' AND target_id = $1`, [bid]);
@@ -131,10 +131,10 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   // ── Disclosure ───────────────────────────────────────────────────────────
   const docA = docs.find(d => d.metadata.matric_number === 'CSC/1').doc_id;
   const full = (await pool.query('SELECT * FROM documents WHERE doc_id = $1', [docA])).rows[0];
-  const vurl = await require('../src/utils/docUtils').buildVerifyUrl(full, 'lasu');
+  const vurl = await require('../src/utils/docUtils').buildVerifyUrl(full, 'dsu');
   await pool.query(`INSERT INTO student_tokens (matric_number, institution, pin_hash, pin_salt, tenant_id, token_balance)
-                    VALUES ('CSC/1', $1, 'x', '', $2, 50)`, [lasu.name, lasu.id]);
-  const pub = client('lasu.localhost:3000');
+                    VALUES ('CSC/1', $1, 'x', '', $2, 50)`, [dsu.name, dsu.id]);
+  const pub = client('dsu.localhost:3000');
   r = await pub('GET', path(vurl));
   ok(r.status === 200 && r.body.includes('Amina Bello') && r.body.includes('docFrame') && !r.body.includes('First Class'),
      'default: name and PDF shown, class of degree hidden');
@@ -157,7 +157,7 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   // ── Scan alerts ──────────────────────────────────────────────────────────
   await pool.query('DELETE FROM verification_log WHERE doc_id = $1', [docA]);
   await pool.query(`INSERT INTO verification_log (doc_id, result, payment_method, tenant_id, geo_location)
-                    SELECT $1, 'found', 'none', $2, 'Lagos, NG' FROM generate_series(1, 18)`, [docA, lasu.id]);
+                    SELECT $1, 'found', 'none', $2, 'Lagos, NG' FROM generate_series(1, 18)`, [docA, dsu.id]);
   r = await pub('GET', path(vurl));
   let al = (await owner('GET', '/app-api/alerts')).body.alerts;
   ok(!al.some(a => a.kind === 'many_scans'), '19 scans: no alert yet');
@@ -169,7 +169,7 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   ok(al.filter(a => a.kind === 'many_scans').length === 1, 'one open alert per document, not one per scan');
 
   await pool.query(`INSERT INTO verification_log (doc_id, result, payment_method, tenant_id, geo_location)
-                    VALUES ($1,'found','none',$2,'Abuja, NG'), ($1,'found','none',$2,'London, GB')`, [docA, lasu.id]);
+                    VALUES ($1,'found','none',$2,'Abuja, NG'), ($1,'found','none',$2,'London, GB')`, [docA, dsu.id]);
   r = await pub('GET', path(vurl));
   al = (await owner('GET', '/app-api/alerts')).body.alerts;
   const places = al.find(a => a.kind === 'many_places');
@@ -192,7 +192,7 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   al = (await owner('GET', '/app-api/alerts')).body.alerts;
   ok(!al.some(a => a.kind === 'many_scans'), 'handled alert stays quiet for 24 hours');
   r = await owner('GET', '/app-api/alerts?status=all');
-  ok(r.body.alerts.some(a => a.kind === 'many_scans' && a.acknowledged_by === 'officer@lasu.edu.ng' && /employers/.test(a.note)), 'handled alert shows who and why');
+  ok(r.body.alerts.some(a => a.kind === 'many_scans' && a.acknowledged_by === 'officer@dsu.example' && /employers/.test(a.note)), 'handled alert shows who and why');
   const ack = await pool.query(`SELECT COUNT(*)::int n FROM activity_log WHERE action = 'scan_alert_acknowledged'`);
   ok(ack.rows[0].n === 1, 'handling logged in activity');
 

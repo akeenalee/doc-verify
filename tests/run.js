@@ -11,7 +11,7 @@
 // overrides a variable that is already set), so no email is sent, no real
 // key is used and Paystack is never called.
 //
-// SAFETY: reset.sql deletes the lasu issuer's data. The runner refuses any
+// SAFETY: reset.sql deletes the dsu issuer's data. The runner refuses any
 // database that isn't on this machine, unless ALLOW_REMOTE_TEST_DB=1 (for a
 // throwaway Neon branch), and always refuses the DATABASE_URL in .env.
 

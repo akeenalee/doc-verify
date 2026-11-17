@@ -26,14 +26,14 @@ async function onboard(browser, link, out, errors) {
 (async () => {
   const a = await post('demo.localhost:3000', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   const t = await get('demo.localhost:3000', '/admin-api/tenants', a.cookie);
-  const lasu = t.tenants.find(x => x.subdomain === 'lasu');
-  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'ui.owner6@lasu.edu.ng', full_name: 'Folake Adeyemi' }, a.cookie);
+  const dsu = t.tenants.find(x => x.subdomain === 'dsu');
+  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'ui.owner6@dsu.example', full_name: 'Folake Adeyemi' }, a.cookie);
   const browser = await chromium.launch();
   const out = '/tmp/claude-0/-home-user/37513211-470b-500d-b235-312ece92b61a/scratchpad/';
   const errors = [];
   const page = await onboard(browser, inv.body.link, out, errors);
   await page.waitForSelector('.cards');
-  const B = 'http://lasu.localhost:3000/app/';
+  const B = 'http://dsu.localhost:3000/app/';
   const ids = await page.evaluate(async () => {
     const r = await fetch('/app-api/batches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doc_type: 'Certificate', file_name: 'class-of-2025.csv',
       csv: 'full_name,matric_number,title\nAmina Bello,CSC/1,BSc Computer Science\nTunde Ade,CSC/2,BSc Computer Science\n' }) });
@@ -44,7 +44,7 @@ async function onboard(browser, link, out, errors) {
   });
   const pool = require('../src/db/pool');
   const doc = (await pool.query('SELECT doc_id FROM documents WHERE batch_id = $1 LIMIT 1', [ids.batch])).rows[0].doc_id;
-  await pool.query(`INSERT INTO scan_alerts (tenant_id, doc_id, kind, detail) VALUES ($1,$2,'many_scans','{"scans_24h":23}'), ($1,$2,'many_places','{"places":["Lagos, NG","Abuja, NG","London, GB"]}')`, [lasu.id, doc]);
+  await pool.query(`INSERT INTO scan_alerts (tenant_id, doc_id, kind, detail) VALUES ($1,$2,'many_scans','{"scans_24h":23}'), ($1,$2,'many_places','{"places":["Lagos, NG","Abuja, NG","London, GB"]}')`, [dsu.id, doc]);
   await pool.end();
   await page.goto(B + '#/dashboard'); await page.waitForSelector('.cards');
   await page.screenshot({ path: out + 'p4b-dashboard.png' });
