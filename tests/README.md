@@ -11,6 +11,7 @@ End-to-end suites that drive a real server and a real PostgreSQL database throug
 | `e2e5.js` | Print vendors and packs, disclosure, scan alerts |
 | `e2e6.js` | Student records, SIS connector, test SIS |
 | `e2e7.js` | Payments: webhook signature, each payment credited exactly once |
+| `e2e8.js` | Account protection: holder PIN lockout, staff TOTP secrets encrypted and single-use codes |
 
 ## Running
 
