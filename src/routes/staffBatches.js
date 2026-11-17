@@ -52,7 +52,8 @@ const TEMPLATE_HEADERS = ['full_name', 'matric_number', 'title', 'programme', 'f
                           'degree_class', 'graduation_year', 'entry_year', 'expiry_date'];
 
 const STATUS_LABEL = { draft: 'Draft', pending_approval: 'Awaiting approval', issued: 'Issued', rejected: 'Rejected', cancelled: 'Cancelled' };
-const clean = (v, max = 255) => (v === undefined || v === null) ? '' : String(v).trim().slice(0, max);
+const { cleanText, cleanNote } = require('../utils/text');
+const clean = (v, max = 255) => cleanText(v, max);
 const norm  = h => String(h || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 function bad(status, message) { const e = new Error(message); e.status = status; return e; }
@@ -352,7 +353,7 @@ router.post('/:id/approve', DECIDERS, async (req, res) => {
     if (batch.submitted_by === req.staff.id || batch.created_by === req.staff.id)
       throw bad(403, 'Someone other than the person who prepared this batch has to approve it.');
     await client.query(`UPDATE batches SET decided_by = $2, decided_at = NOW(), decision_note = $3 WHERE id = $1`,
-      [batch.id, req.staff.id, clean(req.body.note, 500) || null]);
+      [batch.id, req.staff.id, cleanNote(req.body.note, 500) || null]);
     const n = await issueBatch(client, req, batch);
     await client.query('COMMIT');
     await logActivity(req, { action: 'batch_approved', targetType: 'batch', targetId: batch.id,
@@ -366,7 +367,7 @@ router.post('/:id/approve', DECIDERS, async (req, res) => {
 
 router.post('/:id/reject', DECIDERS, async (req, res) => {
   try {
-    const note = clean(req.body.note, 500);
+    const note = cleanNote(req.body.note, 500);
     if (!note) throw bad(400, 'Say why, so the person who prepared it knows what to fix.');
     const batch = await loadBatch(req.tenant.id, req.params.id);
     if (!batch) throw bad(404, 'Batch not found.');

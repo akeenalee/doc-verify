@@ -13,6 +13,7 @@ const router   = express.Router();
 const QRCode   = require('qrcode');
 const PDFDocument = require('pdfkit');
 const pool     = require('../db/pool');
+const { cleanNote } = require('../utils/text');
 const { requireStaff } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
 const { toCsv } = require('../utils/csv');
@@ -85,7 +86,7 @@ router.put('/specs/:docType', OWNER, async (req, res) => {
     if (!anchor) throw bad(400, 'Pick a corner.');
     const mm = moduleMm(size, sampleUrl(req.tenant));
     if (mm < MIN_MODULE_MM) throw bad(400, `At ${size} mm each QR dot would be ${mm} mm, below the ${MIN_MODULE_MM} mm phones need. Make it bigger.`);
-    const notes = String(b.notes || '').slice(0, 500);
+    const notes = cleanNote(b.notes, 500);
     await pool.query(
       `INSERT INTO print_specs (tenant_id, doc_type, anchor, x_mm, y_mm, size_mm, paper, notes, updated_by, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())

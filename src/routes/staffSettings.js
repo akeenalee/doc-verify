@@ -26,7 +26,8 @@ const LOGO_MAX = 300 * 1024;
 const SIG_MAX  = 200 * 1024;
 const SLOT_LABEL = { 1: 'Left (usually Registrar)', 2: 'Middle (usually Vice-Chancellor)' };
 
-const clean  = (v, max = 200) => (v === undefined || v === null) ? '' : String(v).trim().slice(0, max);
+const { cleanText } = require('../utils/text');
+const clean  = (v, max = 200) => cleanText(v, max);
 const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '') && !isNaN(new Date(v));
 const today  = () => isoDate();
 

@@ -2,6 +2,7 @@
 // Used by an Owner inviting staff and by the IL admin inviting a first Owner.
 
 const pool = require('../db/pool');
+const { cleanText } = require('./text');
 const { generateInviteToken } = require('./staffAuth');
 const { sendStaffInvite } = require('./mailer');
 
@@ -27,7 +28,7 @@ async function createInvite(tenant, baseUrl, { email, full_name, roles, invitedB
     `INSERT INTO tenant_users (tenant_id, email, full_name, roles, status, invite_token_hash, invite_expires_at, invited_by)
      VALUES ($1, $2, $3, $4, 'invited', $5, NOW() + ($6 || ' hours')::interval, $7)
      RETURNING id, email, full_name, roles, status, created_at`,
-    [tenant.id, email, (full_name || '').trim().slice(0, 200) || null, roles, hash, String(INVITE_HOURS), invitedBy || null]
+    [tenant.id, email, cleanText(full_name, 200) || null, roles, hash, String(INVITE_HOURS), invitedBy || null]
   );
   const user = r.rows[0];
   const link = inviteLink(baseUrl, token);

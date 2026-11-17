@@ -5,6 +5,7 @@ const express = require('express');
 const router  = express.Router();
 const QRCode  = require('qrcode');
 const pool    = require('../db/pool');
+const { cleanText } = require('../utils/text');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireStaff, clearStaff, ROLES } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
@@ -194,7 +195,7 @@ router.post('/invite/start', loginLimiter, async (req, res) => {
   if (!u) return res.status(404).json({ error: 'This setup link is invalid or has expired.' });
   const problem = A.passwordProblem(req.body.password);
   if (problem) return res.status(400).json({ error: problem });
-  const fullName = String(req.body.full_name || u.full_name || '').trim().slice(0, 200);
+  const fullName = cleanText(req.body.full_name || u.full_name, 200);
   if (!fullName) return res.status(400).json({ error: 'Your full name is required.' });
 
   const secret = A.generateTotpSecret();
