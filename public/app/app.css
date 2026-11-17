@@ -186,3 +186,9 @@ tr.click:hover td { background: #f8fafc; }
 
 .claim-code { font-size: 26px; letter-spacing: 3px; text-align: center; padding: 16px; margin: 8px 0 14px;
   border: 2px dashed var(--brand, #1A3A5C); border-radius: 8px; background: #f7f9fc; user-select: all; }
+.badge.j-assigned { background: #eef3fa; color: var(--brand); }
+.badge.j-downloaded { background: var(--warn-bg); color: var(--warn); }
+.badge.j-printed { background: #eef3fa; color: var(--brand); }
+.badge.j-delivered { background: var(--ok-bg); color: var(--ok); }
+.badge.j-cancelled { background: #f1f2f4; color: var(--muted); }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

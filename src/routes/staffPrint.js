@@ -13,7 +13,7 @@ const router   = express.Router();
 const QRCode   = require('qrcode');
 const PDFDocument = require('pdfkit');
 const pool     = require('../db/pool');
-const { cleanNote } = require('../utils/text');
+const { cleanNote, cleanText } = require('../utils/text');
 const { requireStaff } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
 const { toCsv } = require('../utils/csv');
@@ -147,6 +147,7 @@ function specSheet(tenant, docType, spec, out) {
     'Print the SVG where your workflow allows it. Otherwise print the PNG at 600 dpi (300 dpi minimum). Don\'t resample, sharpen or compress it.',
     'Print in solid black (K only) on a white or very light, uncoated area. No foil, varnish, lamination, embossing or guilloche over the code.',
     'Keep the white border that is part of the image. Don\'t crop it, stretch it or place anything inside it.',
+    'Keep holograms, Kinegrams and other optical security features at least 5 mm clear of the QR and its white border. Their glare stops phones reading the code.',
     `Size tolerance is plus or minus 1 mm. Never print it smaller than ${spec.size_mm} mm.`,
     'Before dispatch, scan a sample from every sheet run with a phone camera. Each scan must open the institution\'s verification page.',
     'The pack contains personal data. Keep it on the job machine only and delete it when the job is delivered.',
@@ -169,35 +170,189 @@ router.get('/specs/:docType/sheet.pdf', PRINTERS, async (req, res) => {
 });
 
 // ── Print jobs ───────────────────────────────────────────────────────────────
-router.get('/jobs', PRINTERS, async (req, res) => {
+// Staff send an issued batch, or chosen documents, to one named vendor. The
+// vendor sees only its own jobs. Pack downloads by the vendor are counted and
+// stop after max_downloads, at expires_at, or once the school confirms
+// delivery; staff can reissue a pack (count reset, new expiry).
+const STAFF = requireStaff('owner', 'officer', 'approver');
+const VENDOR = requireStaff('vendor');
+const JOB_DAYS = 30;
+const MAX_DOWNLOADS = 3;
+const MAX_JOB_DOCS = 2000;
+const isVendor = req => req.staff.roles.length === 1 && req.staff.roles[0] === 'vendor';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Why a vendor can't download right now, or null
+function lockReason(j) {
+  if (j.status === 'cancelled') return 'This job was cancelled.';
+  if (j.status === 'delivered') return 'Delivered. The pack is locked.';
+  if (j.status === 'printed') return 'Marked printed. Ask the school to reissue the pack for a reprint.';
+  if (new Date(j.expires_at) < new Date()) return 'The pack has expired. Ask the school to reissue it.';
+  if (j.download_count >= j.max_downloads) return `Downloaded ${j.max_downloads} times. Ask the school to reissue it.`;
+  return null;
+}
+
+async function loadJob(req, id) {
+  if (!UUID.test(id || '')) throw bad(404, 'Print job not found.');
+  const j = (await pool.query(
+    `SELECT pj.*, u.full_name AS vendor_name, u.email AS vendor_email
+     FROM print_jobs pj JOIN tenant_users u ON u.id = pj.vendor_id
+     WHERE pj.id = $1 AND pj.tenant_id = $2`, [id, req.tenant.id])).rows[0];
+  // A vendor never learns that someone else's job exists
+  if (!j || (isVendor(req) && j.vendor_id !== req.staff.id)) throw bad(404, 'Print job not found.');
+  return j;
+}
+
+const publicJob = (j, vendorView) => ({
+  id: j.id, title: j.title, doc_type: j.doc_type, status: j.status, note: j.note || '',
+  documents: Number(j.documents || 0), download_count: j.download_count, max_downloads: j.max_downloads,
+  expires_at: j.expires_at, created_at: j.created_at, last_downloaded_at: j.last_downloaded_at,
+  printed_at: j.printed_at, delivered_at: j.delivered_at, cancelled_at: j.cancelled_at,
+  locked: !!lockReason(j), lock_reason: lockReason(j),
+  ...(vendorView ? {} : { vendor_id: j.vendor_id, vendor_name: j.vendor_name, vendor_email: j.vendor_email, batch_id: j.batch_id }),
+});
+
+router.get('/vendors', STAFF, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT b.id, b.file_name, b.doc_type, b.issued_count, b.issued_at,
-              (SELECT MAX(created_at) FROM activity_log a
-                WHERE a.tenant_id = b.tenant_id AND a.action = 'print_pack_downloaded' AND a.target_id = b.id::text) AS last_pack_at
-       FROM batches b WHERE b.tenant_id = $1 AND b.status = 'issued'
-       ORDER BY b.issued_at DESC LIMIT 100`, [req.tenant.id]);
-    res.json({ jobs: r.rows });
+      `SELECT id, full_name, email FROM tenant_users
+       WHERE tenant_id = $1 AND status = 'active' AND roles = ARRAY['vendor']::text[] ORDER BY full_name, email`, [req.tenant.id]);
+    res.json({ vendors: r.rows });
+  } catch (e) { sendErr(res, e, 'Failed to load print vendors.'); }
+});
+
+router.get('/jobs', PRINTERS, async (req, res) => {
+  try {
+    const vendor = isVendor(req);
+    const jobs = (await pool.query(
+      `SELECT pj.*, u.full_name AS vendor_name, u.email AS vendor_email,
+              (SELECT COUNT(*) FROM print_job_docs d JOIN documents doc ON doc.doc_id = d.doc_id AND doc.tenant_id = pj.tenant_id
+                WHERE d.job_id = pj.id AND doc.status = 'active') AS documents
+       FROM print_jobs pj JOIN tenant_users u ON u.id = pj.vendor_id
+       WHERE pj.tenant_id = $1 ${vendor ? `AND pj.vendor_id = $2 AND pj.status <> 'cancelled'` : ''}
+       ORDER BY pj.created_at DESC LIMIT 200`, vendor ? [req.tenant.id, req.staff.id] : [req.tenant.id])).rows;
+    const out = { jobs: jobs.map(j => publicJob(j, vendor)), max_downloads: MAX_DOWNLOADS, job_days: JOB_DAYS };
+    if (!vendor) {
+      // Issued batches not yet sent to a printer (or whose jobs were all cancelled)
+      out.unsent = (await pool.query(
+        `SELECT b.id, b.file_name, b.doc_type, b.issued_count, b.issued_at FROM batches b
+         WHERE b.tenant_id = $1 AND b.status = 'issued'
+           AND NOT EXISTS (SELECT 1 FROM print_jobs pj WHERE pj.batch_id = b.id AND pj.status <> 'cancelled')
+         ORDER BY b.issued_at DESC LIMIT 50`, [req.tenant.id])).rows;
+    }
+    res.json(out);
   } catch (e) { sendErr(res, e, 'Failed to load print jobs.'); }
 });
 
+router.post('/jobs', STAFF, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const b = req.body || {};
+    if (!UUID.test(b.vendor_id || '')) throw bad(400, 'Pick a print vendor.');
+    const v = (await client.query(
+      `SELECT id, full_name, email FROM tenant_users WHERE id = $1 AND tenant_id = $2 AND status = 'active' AND roles = ARRAY['vendor']::text[]`,
+      [b.vendor_id, req.tenant.id])).rows[0];
+    if (!v) throw bad(400, 'That print vendor is not active in this workspace.');
+    const note = cleanNote(b.note, 500);
+
+    let docs, title, docType, batchId = null;
+    if (b.batch_id) {
+      if (!UUID.test(b.batch_id)) throw bad(404, 'Batch not found.');
+      const batch = (await client.query(`SELECT * FROM batches WHERE id = $1 AND tenant_id = $2`, [b.batch_id, req.tenant.id])).rows[0];
+      if (!batch) throw bad(404, 'Batch not found.');
+      if (batch.status !== 'issued') throw bad(400, 'Only an issued batch can go to the printer.');
+      docs = (await client.query(
+        `SELECT d.doc_id, br.row_no FROM documents d JOIN batch_rows br ON br.doc_id = d.doc_id AND br.batch_id = $2
+         WHERE d.tenant_id = $1 AND d.status = 'active' ORDER BY br.row_no`, [req.tenant.id, batch.id])).rows;
+      title = batch.file_name || 'Bulk issue'; docType = batch.doc_type; batchId = batch.id;
+    } else {
+      const ids = Array.isArray(b.doc_ids) ? [...new Set(b.doc_ids.map(String))] : [];
+      if (!ids.length) throw bad(400, 'Pick at least one document.');
+      if (ids.length > MAX_JOB_DOCS) throw bad(400, `A job holds up to ${MAX_JOB_DOCS} documents.`);
+      const found = (await client.query(
+        `SELECT doc_id, doc_type, issued_to, status FROM documents WHERE tenant_id = $1 AND doc_id = ANY($2::text[])`,
+        [req.tenant.id, ids])).rows;
+      if (found.length !== ids.length) throw bad(404, 'Some of those documents were not found.');
+      if (found.some(d => d.status !== 'active')) throw bad(400, 'Revoked or replaced documents can\'t be printed.');
+      const types = [...new Set(found.map(d => d.doc_type))];
+      if (types.length > 1) throw bad(400, 'Send one document type per job, so one placement spec fits them all.');
+      docs = ids.map((id, i) => ({ doc_id: id, row_no: i + 1 }));
+      docType = types[0];
+      title = ids.length === 1 ? `${found[0].issued_to} (${found[0].doc_id})` : `${ids.length} documents`;
+    }
+    if (!docs.length) throw bad(400, 'There are no active documents to print.');
+
+    await client.query('BEGIN');
+    const job = (await client.query(
+      `INSERT INTO print_jobs (tenant_id, vendor_id, batch_id, title, doc_type, note, max_downloads, expires_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + ($8 || ' days')::interval,$9) RETURNING *`,
+      [req.tenant.id, v.id, batchId, cleanText(title, 255), docType, note || null, MAX_DOWNLOADS, String(JOB_DAYS), req.staff.id])).rows[0];
+    await client.query(
+      `INSERT INTO print_job_docs (job_id, doc_id, row_no) SELECT $1, x.doc_id, x.row_no
+       FROM json_to_recordset($2::json) AS x(doc_id text, row_no int)`, [job.id, JSON.stringify(docs)]);
+    await client.query('COMMIT');
+    await logActivity(req, { action: 'print_job_created', targetType: 'print_job', targetId: job.id,
+      detail: { vendor: v.full_name || v.email, documents: docs.length, title: job.title } });
+    res.status(201).json({ job: publicJob({ ...job, vendor_name: v.full_name, vendor_email: v.email, documents: docs.length }, false) });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    sendErr(res, e, 'Failed to send the job to the printer.');
+  } finally { client.release(); }
+});
+
+// Status changes: who may make them and from which states
+const MOVES = {
+  printed:   { who: 'vendor', from: ['downloaded'], set: `status = 'printed', printed_at = NOW()`, action: 'print_job_printed' },
+  delivered: { who: 'staff', from: ['downloaded', 'printed'], set: `status = 'delivered', delivered_at = NOW(), delivered_by = $3`, action: 'print_job_delivered' },
+  cancel:    { who: 'staff', from: ['assigned', 'downloaded', 'printed'], set: `status = 'cancelled', cancelled_at = NOW()`, action: 'print_job_cancelled' },
+  reissue:   { who: 'staff', from: ['assigned', 'downloaded', 'printed', 'delivered'],
+               set: `status = 'assigned', download_count = 0, printed_at = NULL, delivered_at = NULL, delivered_by = NULL,
+                     expires_at = NOW() + interval '${JOB_DAYS} days'`, action: 'print_job_reissued' },
+};
+const STATUS_WORD = { assigned: 'not downloaded yet', downloaded: 'downloaded', printed: 'printed', delivered: 'delivered', cancelled: 'cancelled' };
+for (const [move, m] of Object.entries(MOVES)) {
+  router.post(`/jobs/:id/${move}`, m.who === 'vendor' ? VENDOR : STAFF, async (req, res) => {
+    try {
+      const j = await loadJob(req, req.params.id);
+      if (!m.from.includes(j.status)) throw bad(409, `This job is ${STATUS_WORD[j.status]}, so it can't be ${move === 'cancel' ? 'cancelled' : move === 'reissue' ? 'reissued' : 'marked ' + move}.`);
+      const params = [j.id, req.tenant.id];
+      if (move === 'delivered') params.push(req.staff.id);
+      const row = (await pool.query(`UPDATE print_jobs SET ${m.set}, updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`, params)).rows[0];
+      const reason = cleanNote((req.body || {}).reason, 300);
+      await logActivity(req, { action: m.action, targetType: 'print_job', targetId: j.id,
+        detail: { title: j.title, vendor: j.vendor_name || j.vendor_email, ...(reason ? { note: reason } : {}) } });
+      res.json({ job: publicJob({ ...row, vendor_name: j.vendor_name, vendor_email: j.vendor_email }, isVendor(req)) });
+    } catch (e) { sendErr(res, e, 'Failed to update the print job.'); }
+  });
+}
+
 router.get('/jobs/:id/pack.zip', PRINTERS, async (req, res) => {
   try {
-    if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) throw bad(404, 'Print job not found.');
-    const b = (await pool.query(`SELECT * FROM batches WHERE id = $1 AND tenant_id = $2 AND status = 'issued'`,
-      [req.params.id, req.tenant.id])).rows[0];
-    if (!b) throw bad(404, 'Print job not found.');
+    const j = await loadJob(req, req.params.id);
+    const vendor = isVendor(req);
+    if (j.status === 'cancelled') throw bad(410, 'This job was cancelled.');
+    if (vendor) {
+      // Count first, atomically, so two quick clicks can't both slip under the cap
+      const r = await pool.query(
+        `UPDATE print_jobs SET download_count = download_count + 1, last_downloaded_at = NOW(), updated_at = NOW(),
+           status = CASE WHEN status = 'assigned' THEN 'downloaded' ELSE status END
+         WHERE id = $1 AND status IN ('assigned', 'downloaded') AND expires_at > NOW() AND download_count < max_downloads
+         RETURNING download_count`, [j.id]);
+      if (!r.rows[0]) throw bad(410, lockReason(j) || 'This pack is locked.');
+      j.download_count = r.rows[0].download_count;
+    }
     // Revoked or replaced documents are left out: nothing should be printed for them
     const docs = (await pool.query(
-      `SELECT d.*, br.row_no FROM documents d JOIN batch_rows br ON br.doc_id = d.doc_id AND br.batch_id = $2
-       WHERE d.tenant_id = $1 AND d.status = 'active' ORDER BY br.row_no`, [req.tenant.id, b.id])).rows;
-    const spec = (await loadSpecs(req.tenant.id))[b.doc_type] || { ...DEFAULT_SPEC };
+      `SELECT d.*, pd.row_no FROM print_job_docs pd JOIN documents d ON d.doc_id = pd.doc_id AND d.tenant_id = $1
+       WHERE pd.job_id = $2 AND d.status = 'active' ORDER BY pd.row_no`, [req.tenant.id, j.id])).rows;
+    const spec = (await loadSpecs(req.tenant.id))[j.doc_type] || { ...DEFAULT_SPEC };
     spec.module_mm = moduleMm(spec.size_mm, sampleUrl(req.tenant));
     const px = Math.round(spec.size_mm / 25.4 * DPI);
-    await logActivity(req, { action: 'print_pack_downloaded', targetType: 'batch', targetId: b.id, detail: { count: docs.length } });
+    await logActivity(req, { action: 'print_pack_downloaded', targetType: 'print_job', targetId: j.id,
+      detail: { count: docs.length, title: j.title, ...(vendor ? { download: `${j.download_count} of ${j.max_downloads}` } : { by: 'staff' }) } });
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="print-pack-${req.tenant.short_code || 'job'}-${b.id.slice(0, 8)}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="print-pack-${req.tenant.short_code || 'job'}-${j.id.slice(0, 8)}.zip"`);
     res.setHeader('Cache-Control', 'no-store');
     const zip = createZip(res);
     const manifest = [['row', 'doc_id', 'full_name', 'matric_number', 'doc_type', 'title', 'qr_svg', 'qr_png',
@@ -216,17 +371,20 @@ router.get('/jobs/:id/pack.zip', PRINTERS, async (req, res) => {
       const { Writable } = require('stream');
       const sink = new Writable({ write(c, _e, cb) { chunks.push(c); cb(); } });
       sink.on('finish', resolve); sink.on('error', reject);
-      specSheet(req.tenant, b.doc_type, spec, sink);
+      specSheet(req.tenant, j.doc_type, spec, sink);
     });
     zip.add('placement-spec.pdf', Buffer.concat(chunks));
     zip.add('README.txt', [
-      `Print pack for ${req.tenant.name}, ${b.doc_type}, ${docs.length} document(s).`,
+      `Print pack for ${req.tenant.name}: ${j.title}, ${j.doc_type}, ${docs.length} document(s).`,
+      `Job ${j.id}, for ${j.vendor_name || j.vendor_email}.`,
+      vendor ? `Download ${j.download_count} of ${j.max_downloads}. The pack locks after that, on delivery, or on ${new Date(j.expires_at).toISOString().slice(0, 10)}.` : 'Downloaded by school staff.',
       '',
       'qr/            one SVG and one 600 dpi PNG per document, named <row>-<doc_id>',
       'manifest.csv   which QR goes on which graduate\'s document, and where',
       'placement-spec.pdf  position, size and printing rules',
       '',
-      'Revoked or replaced documents are not included. Delete this pack once the job is delivered.',
+      'Keep holograms, Kinegrams, foil and lamination off the QR and its white border.',
+      'Revoked or replaced documents are not included. Mark the job printed in UniVerify, and delete this pack once the job is delivered.',
     ].join('\r\n'));
     zip.end();
   } catch (e) {
