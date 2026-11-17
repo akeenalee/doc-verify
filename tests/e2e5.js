@@ -90,16 +90,48 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
     csv: 'full_name,matric_number,title,degree_class,programme,graduation_year\nAmina Bello,CSC/1,BSc Computer Science,First Class,Computer Science,2025\n' +
          'Tunde Ade,CSC/2,BSc Computer Science,Second Class Upper,Computer Science,2025\nChi Eze,CSC/3,BSc Computer Science,Third Class,Computer Science,2025\n' });
   const bid = r.body.batch.id;
-  r = await vendor('GET', `/app-api/print/jobs/${bid}/pack.zip`);
-  ok(r.status === 404, 'no pack before the batch is issued');
+  r = await officer('GET', '/app-api/print/jobs');
+  ok(r.status === 200 && !r.body.unsent.some(u => u.id === bid), 'draft batch not offered to printers');
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: '00000000-0000-0000-0000-000000000000', batch_id: bid });
+  ok(r.status === 400, 'unknown vendor refused');
+  r = await officer('GET', '/app-api/print/vendors');
+  const vid = (r.body.vendors || []).find(v => v.email === 'jobs@printco.ng')?.id;
+  ok(r.status === 200 && vid && r.body.vendors.length === 1, 'staff list active print vendors');
+  r = await vendor('GET', '/app-api/print/vendors');
+  ok(r.status === 403, 'vendor cannot list vendors');
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, batch_id: bid });
+  ok(r.status === 400, 'batch must be issued before it goes to a printer');
   await officer('POST', `/app-api/batches/${bid}/submit`);
   const docs = (await pool.query(`SELECT doc_id, metadata FROM documents WHERE batch_id = $1 ORDER BY doc_id`, [bid])).rows;
   const revoked = docs.find(d => d.metadata.matric_number === 'CSC/3').doc_id;
   await officer('POST', `/app-api/documents/${revoked}/revoke`, { reason: 'issued_in_error' });
 
+  r = await officer('GET', '/app-api/print/jobs');
+  ok(r.body.unsent.some(u => u.id === bid && u.issued_count === 3), 'issued batch waits under Ready to send');
   r = await vendor('GET', '/app-api/print/jobs');
-  ok(r.body.jobs.some(j => j.id === bid && j.issued_count === 3), 'issued batch listed for vendor');
-  r = await vendor('GET', `/app-api/print/jobs/${bid}/pack.zip`);
+  ok(r.body.jobs.length === 0 && !('unsent' in r.body), 'vendor sees nothing until a job is sent to them');
+  r = await vendor('POST', '/app-api/print/jobs', { vendor_id: vid, batch_id: bid });
+  ok(r.status === 403, 'vendor cannot create jobs');
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, batch_id: bid, note: 'Cream stock. Collect Friday.' });
+  ok(r.status === 201 && r.body.job.status === 'assigned' && r.body.job.documents === 2, 'batch sent to the vendor (revoked one left out)');
+  const jid = r.body.job.id;
+  r = await officer('GET', '/app-api/print/jobs');
+  ok(!r.body.unsent.some(u => u.id === bid), 'sent batch leaves Ready to send');
+
+  // A second printer must never see the first one's job
+  const vendor2 = await mk('ops@otherprint.ng', 'OtherPrint', ['vendor']);
+  r = await vendor2('GET', '/app-api/print/jobs');
+  ok(r.body.jobs.length === 0, 'other vendor does not see the job');
+  r = await vendor2('GET', `/app-api/print/jobs/${jid}/pack.zip`);
+  ok(r.status === 404, 'other vendor cannot download the pack');
+  r = await vendor2('POST', `/app-api/print/jobs/${jid}/printed`);
+  ok(r.status === 404, 'other vendor cannot touch the job');
+
+  r = await vendor('GET', '/app-api/print/jobs');
+  ok(r.body.jobs.length === 1 && r.body.jobs[0].note === 'Cream stock. Collect Friday.' && !('vendor_email' in r.body.jobs[0]), 'vendor sees its job and the note');
+  r = await vendor('POST', `/app-api/print/jobs/${jid}/printed`);
+  ok(r.status === 409, 'cannot mark printed before downloading');
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`);
   ok(r.status === 200 && /zip/.test(r.ct), 'vendor downloads print pack');
   const dir = require('./out') + 'pack'; execSync(`rm -rf ${dir} && mkdir -p ${dir}`);
   fs.writeFileSync(dir + '.zip', r.body);
@@ -120,8 +152,62 @@ const path = u => { const x = new URL(u); return x.pathname + x.search; };
   r = await client('dsu.localhost:3000')('GET', path(url));
   ok(r.status === 302, 'manifest link verifies (v2 signature)');
   ok(fs.readFileSync(dir + '/placement-spec.pdf').slice(0, 4).toString() === '%PDF', 'spec sheet in pack');
-  const acts = await pool.query(`SELECT actor FROM activity_log WHERE action = 'print_pack_downloaded' AND target_id = $1`, [bid]);
-  ok(acts.rows.some(a => a.actor === 'jobs@printco.ng'), 'pack download logged against the vendor');
+  const readme = fs.readFileSync(dir + '/README.txt', 'utf8');
+  ok(/Download 1 of 3/.test(readme) && /holograms/i.test(readme), 'readme states the download count and the keep-clear rule');
+  const acts = await pool.query(`SELECT actor, detail FROM activity_log WHERE action = 'print_pack_downloaded' AND target_id = $1`, [jid]);
+  ok(acts.rows.some(a => a.actor === 'jobs@printco.ng' && a.detail.download === '1 of 3'), 'pack download logged against the vendor, with the count');
+
+  // Download cap
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`); ok(r.status === 200, 'second download allowed');
+  r = await officer('GET', `/app-api/print/jobs/${jid}/pack.zip`); ok(r.status === 200, 'staff download does not count');
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`); ok(r.status === 200, 'third download allowed');
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`);
+  ok(r.status === 410 && /3 times/.test(r.body.error), 'fourth download refused');
+  r = await vendor('GET', '/app-api/print/jobs');
+  ok(r.body.jobs[0].download_count === 3 && r.body.jobs[0].locked && r.body.jobs[0].status === 'downloaded', 'job shows 3 of 3, locked');
+
+  // Status flow
+  r = await officer('POST', `/app-api/print/jobs/${jid}/printed`);
+  ok(r.status === 403, 'only the vendor marks a job printed');
+  r = await vendor('POST', `/app-api/print/jobs/${jid}/delivered`);
+  ok(r.status === 403, 'vendor cannot confirm delivery');
+  r = await vendor('POST', `/app-api/print/jobs/${jid}/printed`);
+  ok(r.status === 200 && r.body.job.status === 'printed', 'vendor marks printed');
+  r = await officer('POST', `/app-api/print/jobs/${jid}/delivered`);
+  ok(r.status === 200 && r.body.job.status === 'delivered' && r.body.job.locked, 'school confirms delivery, pack locked');
+  r = await officer('POST', `/app-api/print/jobs/${jid}/reissue`, { reason: 'Two sheets misprinted' });
+  ok(r.status === 200 && r.body.job.status === 'assigned' && r.body.job.download_count === 0 && !r.body.job.locked, 'reissue resets the count');
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`); ok(r.status === 200, 'vendor downloads the reissued pack');
+  await pool.query(`UPDATE print_jobs SET expires_at = NOW() - interval '1 minute' WHERE id = $1`, [jid]);
+  r = await vendor('GET', `/app-api/print/jobs/${jid}/pack.zip`);
+  ok(r.status === 410 && /expired/.test(r.body.error), 'expired pack refused');
+  r = await officer('POST', `/app-api/print/jobs/${jid}/cancel`, { reason: 'Wrong printer' });
+  ok(r.status === 200 && r.body.job.status === 'cancelled', 'staff cancel a job');
+  r = await vendor('GET', '/app-api/print/jobs');
+  ok(r.body.jobs.length === 0, 'cancelled job disappears for the vendor');
+  r = await officer('GET', '/app-api/print/jobs');
+  ok(r.body.unsent.some(u => u.id === bid), 'batch of a cancelled job can be sent again');
+  r = await officer('POST', `/app-api/print/jobs/${jid}/delivered`);
+  ok(r.status === 409, 'cancelled job cannot move on');
+  const logged = (await pool.query(`SELECT action FROM activity_log WHERE target_id = $1 ORDER BY id`, [jid])).rows.map(x => x.action);
+  ok(['print_job_created', 'print_job_printed', 'print_job_delivered', 'print_job_reissued', 'print_job_cancelled'].every(a => logged.includes(a)), 'every step logged');
+
+  // Single documents
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, doc_ids: [docs.find(d => d.doc_id !== revoked).doc_id] });
+  ok(r.status === 201 && r.body.job.documents === 1, 'single document sent to the printer');
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, doc_ids: [revoked] });
+  ok(r.status === 400, 'revoked document cannot be printed');
+  r = await officer('POST', '/app-api/documents', { doc_type: 'Transcript', title: 'Transcript', issued_to: 'Amina Bello', matric_number: 'CSC/1T' });
+  const tdoc = r.body.document.doc_id;
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, doc_ids: [docs[0].doc_id === revoked ? docs[1].doc_id : docs[0].doc_id, tdoc] });
+  ok(r.status === 400 && /one document type/.test(r.body.error), 'mixed document types refused');
+  await owner('POST', `/app-api/users/${vid}/status`, { enabled: false });
+  r = await officer('POST', '/app-api/print/jobs', { vendor_id: vid, doc_ids: [tdoc] });
+  ok(r.status === 400, 'disabled vendor cannot be sent jobs');
+  await owner('POST', `/app-api/users/${vid}/status`, { enabled: true });
+
+  r = await owner('GET', '/app-api/print/specs/Certificate/sheet.pdf');
+  ok(r.status === 200, 'spec sheet still builds with the keep-clear rule');
 
   r = await officer('GET', `/app-api/documents/${docs[0].doc_id}/qr?format=svg`);
   ok(r.status === 200 && /svg/.test(r.ct), 'single document QR as SVG');

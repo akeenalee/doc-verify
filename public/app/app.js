@@ -33,6 +33,8 @@
     signing_key_rotated: 'Rotated QR signing key', strict_mode_enabled: 'Turned strict QR checking on', strict_mode_disabled: 'Turned strict QR checking off',
     claim_codes_required: 'Required claim codes for the graduate portal', claim_codes_not_required: 'Stopped requiring claim codes',
     print_spec_updated: 'Changed QR print layout', print_pack_downloaded: 'Downloaded print pack',
+    print_job_created: 'Sent a print job', print_job_printed: 'Marked print job printed', print_job_delivered: 'Confirmed print job delivered',
+    print_job_reissued: 'Reissued print pack', print_job_cancelled: 'Cancelled print job',
     disclosure_updated: 'Changed what verifiers see', scan_alert_acknowledged: 'Handled scan alert',
     student_list_uploaded: 'Uploaded student list', student_list_deleted: 'Deleted student list',
     registered_check_on: 'Required registered students', registered_check_off: 'Stopped requiring registered students',
@@ -177,7 +179,7 @@
     const [path, query] = location.hash.slice(1).split('?');
     return { path: path || '/dashboard', q: new URLSearchParams(query || '') };
   }
-  const go = (path, params) => { location.hash = '#' + path + (params ? '?' + qs(params) : ''); };
+  const go = (path, params) => { const h = '#' + path + (params ? '?' + qs(params) : ''); if (location.hash === h) render(); else location.hash = h; };
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const NAV = [
@@ -322,6 +324,7 @@
     if (canIssue() && doc.status === 'active') actions.push(`<button class="btn danger" id="revoke">Revoke</button>`);
     if (has('owner') && d.can_restore) actions.push(`<button class="btn secondary" id="restore">Restore</button>`);
     if (canIssue() && doc.status === 'active' && m.matric_number) actions.push(`<button class="btn secondary" id="claim">Graduate claim code</button>`);
+    if (canIssue() && doc.status === 'active') actions.push(`<button class="btn secondary" id="send-print">Send to printer</button>`);
 
     el.innerHTML = `
       <div class="page-head"><div><h1>${esc(doc.issued_to)}</h1><div class="sub">${esc(doc.title)}</div></div>
@@ -340,6 +343,7 @@
         </tbody></table></div>` : '<div class="empty">No staff actions recorded for this document.</div>'}</div>`;
 
     $('copy-verify').onclick = () => copy(d.verify_url);
+    if ($('send-print')) $('send-print').onclick = () => sendToPrinter({ doc_ids: [doc.doc_id] }, `${doc.issued_to}, ${typeLabel(doc.doc_type)}`);
     if ($('claim')) $('claim').onclick = () => modal({
       title: 'Graduate claim code', submit: 'Create code',
       lead: `${doc.issued_to} needs this code once, to open their graduate portal account for matric number ${m.matric_number}. It works for ${S.meta.claim_days || 90} days and only once. Creating a new code cancels any earlier one that hasn't been used.`,
@@ -390,6 +394,8 @@
     if (d.kind) parts.push(ALERT_LABEL[d.kind] || d.kind);
     if (d.size_mm) parts.push(`${d.paper || ''} ${d.anchor || ''}, ${d.x_mm} x ${d.y_mm} mm, ${d.size_mm} mm QR`);
     if (d.file_name) parts.push(d.file_name);
+    if (d.vendor) parts.push(`${d.title ? d.title + ', ' : ''}${d.vendor}${d.documents ? `, ${d.documents} documents` : ''}`);
+    if (d.download) parts.push('Download ' + d.download);
     if (d.rows != null) parts.push(`${d.rows} rows` + (d.errors ? `, ${d.errors} with errors` : ''));
     if (d.issued != null) parts.push(`${d.issued} issued`);
     if (d.batch_id && d.row) parts.push(`Bulk upload, row ${d.row}`);
@@ -953,26 +959,84 @@
 
   // ── Print jobs (Phase 4b) ───────────────────────────────────────────────
   const ANCHOR_LABEL = { 'top-left': 'Top left', 'top-right': 'Top right', 'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right' };
+  const JOB_LABEL = { assigned: 'Sent', downloaded: 'Downloaded', printed: 'Printed', delivered: 'Delivered', cancelled: 'Cancelled' };
+  // Pick a vendor and create a print job for a batch or documents
+  async function sendToPrinter(what, label) {
+    const { vendors } = await api('/print/vendors');
+    if (!vendors.length) {
+      modal({ title: 'Send to printer', lead: has('owner')
+        ? 'No print vendor has an account yet. Invite your printer under Users and roles with the Print vendor role, then send the job.'
+        : 'No print vendor has an account yet. Ask an Owner to invite your printer with the Print vendor role.' });
+      return;
+    }
+    modal({
+      title: 'Send to printer', submit: 'Send job',
+      lead: `${label}. Only the vendor you pick sees this job. They can download the QR pack up to 3 times within 30 days, and it locks once you confirm delivery.`,
+      fields: [
+        { name: 'vendor_id', label: 'Print vendor', type: 'select', value: vendors[0].id, options: vendors.map(v => ({ value: v.id, label: v.full_name ? `${v.full_name} (${v.email})` : v.email })) },
+        { name: 'note', label: 'Note for the printer (optional)', type: 'textarea', hint: 'For example the paper stock, the delivery date or who collects.' },
+      ],
+      onSubmit: async v => { await api('/print/jobs', { method: 'POST', body: { ...what, ...v } }); toast('Sent to the printer.'); go('/print'); },
+    });
+  }
+
   V['/print'] = async (el) => {
     const [j, sp] = await Promise.all([api('/print/jobs'), api('/print/specs')]);
     const spec = t => sp.specs[t];
+    const vendor = vendorOnly();
+    const jobRow = x => {
+      const acts = [];
+      if (vendor) {
+        acts.push(x.locked ? `<span class="muted">${esc(x.lock_reason)}</span>` : `<a class="btn sm" href="/app-api/print/jobs/${esc(x.id)}/pack.zip" data-dl>Download pack</a>`);
+        if (x.status === 'downloaded') acts.push(`<button class="btn secondary sm" data-move="printed" data-job="${esc(x.id)}">Mark printed</button>`);
+      } else {
+        if (x.status !== 'cancelled') acts.push(`<a class="btn secondary sm" href="/app-api/print/jobs/${esc(x.id)}/pack.zip">Pack</a>`);
+        if (['downloaded', 'printed'].includes(x.status)) acts.push(`<button class="btn sm" data-move="delivered" data-job="${esc(x.id)}">Confirm delivered</button>`);
+        if (x.status !== 'cancelled' && (x.locked || x.status === 'delivered')) acts.push(`<button class="btn secondary sm" data-move="reissue" data-job="${esc(x.id)}">Reissue pack</button>`);
+        if (['assigned', 'downloaded', 'printed'].includes(x.status)) acts.push(`<button class="btn ghost sm" data-move="cancel" data-job="${esc(x.id)}">Cancel</button>`);
+      }
+      return `<tr><td>${esc(x.title)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ''}</td><td>${esc(typeLabel(x.doc_type))}</td><td>${esc(x.documents)}</td>
+        ${vendor ? '' : `<td>${esc(x.vendor_name || x.vendor_email)}</td>`}
+        <td>${badge('j-' + x.status, JOB_LABEL[x.status])}</td>
+        <td>${esc(x.download_count)} of ${esc(x.max_downloads)}${x.last_downloaded_at ? `<div class="muted">${esc(fmtTime(x.last_downloaded_at))}</div>` : ''}</td>
+        <td>${esc(fmtDate(x.expires_at))}</td>
+        <td><div class="row-actions">${acts.join(' ')}</div></td></tr>`;
+    };
+    const jobsTable = j.jobs.length ? `<div class="table-wrap"><table><thead><tr><th>Job</th><th>Type</th><th>Documents</th>${vendor ? '' : '<th>Vendor</th>'}<th>Status</th><th>Downloads</th><th>Pack until</th><th></th></tr></thead><tbody>
+      ${j.jobs.map(jobRow).join('')}</tbody></table></div>`
+      : `<div class="empty">${vendor ? 'No jobs for you yet. The school sends each job to you when it\'s ready to print.' : 'No print jobs yet. Send an issued batch below, or a single document from its page.'}</div>`;
     el.innerHTML = `
-      <div class="page-head"><div><h1>Print jobs</h1><div class="sub">QR codes for documents printed by an outside printer</div></div></div>
-      ${vendorOnly() ? `<div class="notice">Each pack holds one QR per document (SVG and 600 dpi PNG), a manifest that says which QR goes on whose document, and the placement spec. Follow the spec, scan a sample before dispatch, and delete the pack once the job is delivered.</div>` : ''}
-      <div class="panel"><h2>Issued batches</h2>
-        ${j.jobs.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Documents</th><th>Issued</th><th>Last pack</th><th></th></tr></thead><tbody>
-          ${j.jobs.map(b => `<tr><td>${esc(b.file_name || '')}</td><td>${esc(typeLabel(b.doc_type))}</td><td>${esc(b.issued_count)}</td>
-            <td>${esc(fmtTime(b.issued_at))}</td><td>${esc(b.last_pack_at ? fmtTime(b.last_pack_at) : 'Never')}</td>
-            <td><a class="btn sm" href="/app-api/print/jobs/${esc(b.id)}/pack.zip">Download print pack</a></td></tr>`).join('')}
-          </tbody></table></div>` : '<div class="empty">No issued batches yet. Packs appear here once a bulk upload is issued.</div>'}</div>
+      <div class="page-head"><div><h1>Print jobs</h1><div class="sub">${vendor ? `Jobs ${esc(S.tenant.name)} has sent you` : 'QR codes for documents printed by an outside printer'}</div></div></div>
+      ${vendor ? `<div class="notice">Each pack holds one QR per document (SVG and 600 dpi PNG), a manifest that says which QR goes on whose document, and the placement spec. You can download a pack ${esc(j.max_downloads)} times. Keep holograms and lamination off the QR, scan a sample before dispatch, mark the job printed, and delete the pack once it's delivered.</div>` : ''}
+      <div class="panel"><h2>${vendor ? 'Your jobs' : 'Jobs sent to printers'}</h2>${jobsTable}</div>
+      ${!vendor ? `<div class="panel"><h2>Ready to send</h2>
+        ${j.unsent.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Documents</th><th>Issued</th><th></th></tr></thead><tbody>
+          ${j.unsent.map(b => `<tr><td>${esc(b.file_name || '')}</td><td>${esc(typeLabel(b.doc_type))}</td><td>${esc(b.issued_count)}</td><td>${esc(fmtTime(b.issued_at))}</td>
+            <td><button class="btn sm" data-send="${esc(b.id)}" data-label="${esc(`${b.file_name || 'Batch'}, ${b.issued_count} documents`)}">Send to printer</button></td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">Every issued batch has been sent. New bulk uploads appear here once they\'re issued.</div>'}</div>` : ''}
       <div class="panel"><h2>QR placement by document type</h2>
-        <p class="muted">Where the printer puts the QR. Codes are printed with a ${sp.dpi} dpi image or the SVG, and each dot must be at least ${sp.min_module_mm} mm for phones to read it reliably.</p>
+        <p class="muted">Where the printer puts the QR. Codes are printed with a ${sp.dpi} dpi image or the SVG, and each dot must be at least ${sp.min_module_mm} mm for phones to read it reliably. Holograms and lamination stay at least 5 mm clear of the code.</p>
         <div class="table-wrap"><table><thead><tr><th>Document type</th><th>Paper</th><th>Corner</th><th>From side / edge</th><th>QR size</th><th>Dot size</th><th></th></tr></thead><tbody>
           ${sp.doc_types.map(t => { const s = spec(t); return `<tr><td>${esc(typeLabel(t))}${s.custom ? '' : ' <span class="muted">(default)</span>'}</td>
             <td>${esc(s.paper)}</td><td>${esc(ANCHOR_LABEL[s.anchor])}</td><td>${esc(s.x_mm)} / ${esc(s.y_mm)} mm</td><td>${esc(s.size_mm)} mm</td><td>${esc(s.module_mm)} mm</td>
             <td style="white-space:nowrap"><a class="btn secondary sm" target="_blank" href="/app-api/print/specs/${encodeURIComponent(t)}/sheet.pdf">Spec sheet</a>
             ${has('owner') ? ` <button class="btn ghost sm" data-spec="${esc(t)}">Change</button>` : ''}</td></tr>`; }).join('')}
         </tbody></table></div></div>`;
+    el.querySelectorAll('[data-send]').forEach(btn => btn.onclick = () => sendToPrinter({ batch_id: btn.dataset.send }, btn.dataset.label));
+    // The count changes on the server; refresh so the row shows it
+    el.querySelectorAll('[data-dl]').forEach(a => a.addEventListener('click', () => setTimeout(render, 1500)));
+    const MOVE = {
+      printed: { title: 'Mark printed', submit: 'Mark printed', lead: 'Tells the school the job is printed. The pack locks for you; ask the school to reissue it if you need to reprint.' },
+      delivered: { title: 'Confirm delivered', submit: 'Confirm delivered', lead: 'Locks the pack for the printer. Do this once the printed documents are in your hands.' },
+      reissue: { title: 'Reissue pack', submit: 'Reissue', lead: 'Lets the printer download the pack again: the count goes back to 0 and the 30 days start again. Use it for a reprint or a lost file.', reason: true },
+      cancel: { title: 'Cancel job', submit: 'Cancel job', danger: true, lead: 'The printer loses access to this job straight away. The documents stay valid.', reason: true },
+    };
+    el.querySelectorAll('[data-move]').forEach(btn => btn.onclick = () => {
+      const mv = MOVE[btn.dataset.move];
+      modal({ title: mv.title, submit: mv.submit, danger: mv.danger, lead: mv.lead,
+        fields: mv.reason ? [{ name: 'reason', label: 'Reason (optional)', type: 'textarea' }] : [],
+        onSubmit: async v => { await api(`/print/jobs/${btn.dataset.job}/${btn.dataset.move}`, { method: 'POST', body: v }); toast('Done.'); render(); } });
+    });
     el.querySelectorAll('[data-spec]').forEach(btn => btn.onclick = () => {
       const t = btn.dataset.spec, s = spec(t);
       modal({
@@ -1085,6 +1149,7 @@
       actions.push('<button class="btn secondary" id="bt-cancel">Cancel batch</button>');
     if (b.status === 'issued' && canIssue()) actions.push(`<a class="btn" href="${base}/pdfs.zip">Download all PDFs (zip)</a>`);
     if (b.status === 'issued' && canIssue()) actions.push('<button class="btn secondary" id="bt-claims">Graduate claim codes (CSV)</button>');
+    if (b.status === 'issued' && canIssue()) actions.push('<button class="btn secondary" id="bt-print">Send to printer</button>');
     if (b.error_count) actions.push(`<a class="btn secondary" href="${base}/errors.csv">Rows to fix (CSV)</a>`);
 
     let note = '';
@@ -1096,7 +1161,8 @@
     if (b.status === 'rejected') note = `Rejected by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}: ${b.decision_note || ''}`;
     if (b.status === 'cancelled') note = `Cancelled by ${who(b.decided_by)} on ${fmtTime(b.decided_at)}. Nothing was issued.`;
 
-    const wireClaims = () => { if ($('bt-claims')) $('bt-claims').onclick = () => modal({
+    const wireClaims = () => { if ($('bt-print')) $('bt-print').onclick = () => sendToPrinter({ batch_id: b.id }, `${b.file_name}, ${b.issued_count} documents`);
+      if ($('bt-claims')) $('bt-claims').onclick = () => modal({
       title: 'Graduate claim codes', submit: 'Create codes',
       lead: 'Makes a fresh claim code for every graduate in this batch and downloads them as a CSV, so you can send each graduate their own code. Any earlier code for these graduates that hasn\'t been used stops working. Keep the file safe and delete it once the codes are sent.',
       onSubmit: async () => {

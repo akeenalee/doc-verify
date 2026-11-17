@@ -35,7 +35,8 @@ async function setupPayout(tenant, input, actor) {
   const bank_code = String(input.bank_code || '').trim();
   const account_number = String(input.account_number || '').replace(/\s/g, '');
   const fee_bps = input.platform_fee_bps === undefined || input.platform_fee_bps === '' ? DEFAULT_FEE_BPS : Number(input.platform_fee_bps);
-  const fee_bearer = input.fee_bearer === 'subaccount' ? 'subaccount' : 'account';
+  // The school pays Paystack's charge unless the IL admin picks otherwise (Alli, 2026-11-17)
+  const fee_bearer = input.fee_bearer === 'account' ? 'account' : 'subaccount';
   if (!/^\d{1,10}$/.test(bank_code)) throw bad(400, 'Pick the bank.');
   if (!/^\d{10}$/.test(account_number)) throw bad(400, 'Account numbers (NUBAN) are 10 digits.');
   if (!Number.isInteger(fee_bps) || fee_bps < 0 || fee_bps > 5000) throw bad(400, 'The platform fee must be between 0% and 50%.');

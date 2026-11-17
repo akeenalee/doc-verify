@@ -443,7 +443,7 @@ async function openPayout(id, name) {
       ? (p.active ? 'Paying out to ' : 'Paused. Last account: ') + (p.bank_name || '') + ' ****' + p.account_last4 + (p.account_name ? ' (' + p.account_name + ')' : '') + ', fee ' + p.platform_fee_percent + '%'
       : 'Not set up. Payments for this institution go to the Innovation Lens account.';
     document.getElementById('po-fee').value = p ? p.platform_fee_percent : 10;
-    document.getElementById('po-bearer').value = p ? p.fee_bearer : 'account';
+    document.getElementById('po-bearer').value = p ? p.fee_bearer : 'subaccount';
     document.getElementById('po-pause').style.display = p && p.active ? '' : 'none';
   } catch (e) { msg.textContent = e.message; msg.style.color = '#F09595'; }
 }
