@@ -28,9 +28,16 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:    ["'self'"],
-      scriptSrc:     ["'self'", "'unsafe-inline'"],
-      scriptSrcAttr: ["'unsafe-inline'"],
+      // Scripts only from files on this site: no inline <script>, no onclick=""
+      scriptSrc:     ["'self'"],
+      scriptSrcAttr: ["'none'"],
+      // Inline styles stay allowed for now (style="" is used throughout and
+      // can't run code); moving them to classes is a separate clean-up
       styleSrc:      ["'self'", "'unsafe-inline'"],
+      objectSrc:     ["'none'"],
+      baseUri:       ["'self'"],
+      formAction:    ["'self'"],
+      frameAncestors: ["'self'"],
       connectSrc:    ["'self'", "https://ipinfo.io"],
       imgSrc:        ["'self'", "data:"],
       frameSrc:      ["'self'", "https://checkout.paystack.com"],

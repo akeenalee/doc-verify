@@ -457,48 +457,8 @@ function renderPage(pageTitle, message, state, docData) {
           title="Official Document">
         </iframe>
       </div>
-      <div id="docPages" style="display:none;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#f8f9fa;"></div>
-      <script>
-        // Mobile browsers (Android Chrome, iOS Safari) don't render PDFs inside
-        // an iframe, so render the pages to canvas with PDF.js there.
-        (function () {
-          var mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
-                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-          if (!mobile) return;
-          var wrap = document.getElementById('docFrameWrap');
-          var pages = document.getElementById('docPages');
-          var s = document.createElement('script');
-          s.src = '/vendor/pdfjs/pdf.min.js';
-          s.onload = function () {
-            var lib = window.pdfjsLib;
-            if (!lib) return;
-            lib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
-            lib.getDocument({ url: ${JSON.stringify(docData._previewUrl).replace(/</g, '\\u003c')}, isEvalSupported: false })
-              .promise.then(function (pdf) {
-                wrap.remove();
-                pages.style.display = 'block';
-                var dpr = window.devicePixelRatio || 1;
-                var chain = Promise.resolve();
-                for (var i = 1; i <= pdf.numPages; i++) {
-                  (function (n) {
-                    chain = chain.then(function () { return pdf.getPage(n); }).then(function (page) {
-                      var base = page.getViewport({ scale: 1 });
-                      var scale = (pages.clientWidth || 360) / base.width;
-                      var vp = page.getViewport({ scale: scale * dpr });
-                      var c = document.createElement('canvas');
-                      c.width = vp.width; c.height = vp.height;
-                      c.style.width = '100%'; c.style.display = 'block';
-                      pages.appendChild(c);
-                      return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-                    });
-                  })(i);
-                }
-              })
-              .catch(function (e) { console.error('PDF render failed', e); });
-          };
-          document.head.appendChild(s);
-        })();
-      </script>
+      <div id="docPages" data-src="${escHtml(docData._previewUrl)}" style="display:none;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#f8f9fa;"></div>
+      <script src="/js/verify-preview.js"></script>
       <p style="font-size:11px;color:#aaa;margin-top:8px;text-align:center;">
         This is the official document as issued by ${escHtml(docData.issued_by)}.
         If the PDF does not display, click Download PDF above.
