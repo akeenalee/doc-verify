@@ -313,6 +313,30 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="payout-modal">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-title" id="po-title">Payout</div>
+    <div class="modal-sub" id="po-current"></div>
+    <div class="modal-label">Settlement bank</div>
+    <select id="po-bank" class="custom-dur" style="display:block"></select>
+    <div class="modal-label">Account number (10 digits)</div>
+    <input id="po-account" class="custom-dur" style="display:block" inputmode="numeric" maxlength="10" autocomplete="off"/>
+    <div class="modal-label">Platform fee kept by Innovation Lens (%)</div>
+    <input id="po-fee" class="custom-dur" style="display:block" type="number" min="0" max="50" step="0.5" value="10"/>
+    <div class="modal-label">Who pays Paystack's charge</div>
+    <select id="po-bearer" class="custom-dur" style="display:block">
+      <option value="account">Innovation Lens</option>
+      <option value="subaccount">The institution</option>
+    </select>
+    <div id="po-msg" style="font-size:12px;min-height:18px;margin-bottom:12px"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="po-pause" style="margin-right:auto;color:#F09595;border-color:#5a2a2a">Pause payouts</button>
+      <button class="modal-cancel" id="po-cancel">Close</button>
+      <button class="modal-confirm" id="po-save">Check and save</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/admin.js"></script>
 </body>
 </html>

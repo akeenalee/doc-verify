@@ -273,6 +273,35 @@ async function securityState(t) {
   };
 }
 
+// ── Payouts (read-only here; Innovation Lens sets them up) ──────────────────
+router.get('/payout', OWNER, async (req, res) => {
+  try {
+    const { getPayout, publicView } = require('../utils/payouts');
+    const t = req.tenant.id;
+    // Last 30 days of successful payments for this school
+    const r = await pool.query(
+      `SELECT kind, COUNT(*)::int AS n, COALESCE(SUM(amount_kobo), 0)::bigint AS gross,
+              COALESCE(SUM(platform_fee_kobo) FILTER (WHERE subaccount_code IS NOT NULL), 0)::bigint AS fee,
+              COALESCE(SUM(amount_kobo) FILTER (WHERE subaccount_code IS NOT NULL), 0)::bigint AS split_gross
+       FROM (
+         SELECT 'holder' AS kind, amount_kobo, platform_fee_kobo, subaccount_code FROM token_purchases
+          WHERE tenant_id = $1 AND paystack_status = 'success' AND created_at > NOW() - INTERVAL '30 days'
+         UNION ALL
+         SELECT 'verifier', v.amount_kobo, v.platform_fee_kobo, v.subaccount_code FROM verification_payments v
+           JOIN documents d ON d.doc_id = v.doc_id
+          WHERE d.tenant_id = $1 AND v.paystack_status = 'success' AND v.created_at > NOW() - INTERVAL '30 days'
+       ) x GROUP BY kind`, [t]);
+    const sum = { payments: 0, gross_kobo: 0, school_share_kobo: 0, platform_fee_kobo: 0, unsplit_kobo: 0, by_kind: {} };
+    for (const row of r.rows) {
+      const gross = Number(row.gross), fee = Number(row.fee), split = Number(row.split_gross);
+      sum.payments += row.n; sum.gross_kobo += gross; sum.platform_fee_kobo += fee;
+      sum.school_share_kobo += split - fee; sum.unsplit_kobo += gross - split;
+      sum.by_kind[row.kind] = { payments: row.n, gross_kobo: gross };
+    }
+    res.json({ payout: publicView(await getPayout(t)), last_30_days: sum });
+  } catch (e) { sendErr(res, e, 'Failed to load payouts.'); }
+});
+
 router.get('/security', OWNER, async (req, res) => {
   try {
     await activeKey(req.tenant.id); // makes key 1 on first visit

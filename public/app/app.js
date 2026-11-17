@@ -29,6 +29,7 @@
     batch_rejected: 'Rejected batch', batch_cancelled: 'Cancelled batch', batch_issued: 'Issued batch',
     batch_pdfs_downloaded: 'Downloaded batch PDFs', approval_enabled: 'Turned batch approval on', approval_disabled: 'Turned batch approval off',
     claim_code_issued: 'Created graduate claim code', batch_claim_codes_issued: 'Created claim codes for batch',
+    payout_set_up: 'Payout bank account set up', payout_paused: 'Payouts paused',
     signing_key_rotated: 'Rotated QR signing key', strict_mode_enabled: 'Turned strict QR checking on', strict_mode_disabled: 'Turned strict QR checking off',
     claim_codes_required: 'Required claim codes for the graduate portal', claim_codes_not_required: 'Stopped requiring claim codes',
     print_spec_updated: 'Changed QR print layout', print_pack_downloaded: 'Downloaded print pack',
@@ -199,6 +200,7 @@
     { path: '/signatories', label: 'Signatories', show: () => has('owner') },
     { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
     { path: '/students',  label: 'Student records', show: () => has('owner') },
+    { path: '/payouts',   label: 'Payments and payouts', show: () => has('owner') },
   ];
   function renderNav(active) {
     $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
@@ -384,6 +386,7 @@
     if (d.doc_type) parts.push(d.doc_type);
     if (d.matric_number) parts.push(d.matric_number);
     if (d.changes) parts.push(d.changes.join('; '));
+    if (d.bank) parts.push(`${d.bank} ${d.account || ''}, platform fee ${d.fee_percent}%`);
     if (d.kind) parts.push(ALERT_LABEL[d.kind] || d.kind);
     if (d.size_mm) parts.push(`${d.paper || ''} ${d.anchor || ''}, ${d.x_mm} x ${d.y_mm} mm, ${d.size_mm} mm QR`);
     if (d.file_name) parts.push(d.file_name);
@@ -760,6 +763,37 @@
 
 
   // ── QR and portal security (Phase 4) ────────────────────────────────────
+  V['/payouts'] = async (el) => {
+    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can see payouts.</div>'; return; }
+    const d = await api('/settings/payout');
+    const p = d.payout, s = d.last_30_days;
+    const naira = k => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 });
+    const BEARER = { account: 'Innovation Lens pays the Paystack charge', subaccount: `${S.tenant.name} pays the Paystack charge` };
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Payments and payouts</h1><div class="sub">Where verification fees and graduate credit purchases for ${esc(S.tenant.name)} settle</div></div></div>
+      <div class="panel"><h2>Payout account</h2>
+        ${p && p.active ? `<dl class="kv">
+            <dt>Status</dt><dd>${badge('active', 'Paying out')}</dd>
+            <dt>Bank</dt><dd>${esc(p.bank_name || '')}</dd>
+            <dt>Account</dt><dd><span class="mono">****${esc(p.account_last4)}</span> ${esc(p.account_name || '')}</dd>
+            <dt>Platform fee</dt><dd>${esc(p.platform_fee_percent)}% of each payment, kept by Innovation Lens</dd>
+            <dt>Paystack charge</dt><dd>${esc(BEARER[p.fee_bearer] || '')}</dd>
+            <dt>Last changed</dt><dd>${esc(fmtTime(p.updated_at))}</dd></dl>
+            <p class="muted">Paystack settles ${esc(S.tenant.name)}'s share straight to this account on its normal settlement schedule. To change the account, contact Innovation Lens.</p>`
+          : `<div class="notice">${p ? 'Payouts are paused.' : 'No payout account is set up yet.'} Payments are collected by Innovation Lens until it is. Contact Innovation Lens to add ${esc(S.tenant.name)}'s bank account.</div>`}
+      </div>
+      <div class="panel"><h2>Last 30 days</h2>
+        <div class="cards">
+          <div class="card"><div class="k">Successful payments</div><div class="v">${esc(s.payments)}</div></div>
+          <div class="card"><div class="k">Paid in total</div><div class="v">${esc(naira(s.gross_kobo))}</div></div>
+          <div class="card"><div class="k">${esc(S.tenant.name)}'s share, split at Paystack</div><div class="v">${esc(naira(s.school_share_kobo))}</div></div>
+          <div class="card"><div class="k">Platform fee</div><div class="v">${esc(naira(s.platform_fee_kobo))}</div></div>
+        </div>
+        ${s.unsplit_kobo ? `<p class="muted">${esc(naira(s.unsplit_kobo))} was paid before payouts were active and was collected by Innovation Lens.</p>` : ''}
+        <p class="muted">Amounts are before Paystack's own charge. Paystack's dashboard has the settlement record.</p>
+      </div>`;
+  };
+
   V['/security'] = async (el) => {
     if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can change security settings.</div>'; return; }
     const [d, dis] = await Promise.all([api('/settings/security'), api('/settings/disclosure')]);
