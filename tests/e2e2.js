@@ -40,12 +40,12 @@ async function setup(c, token, pw, name) {
   const admin = client('demo.localhost:3000');
   let r = await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   r = await admin('GET', '/admin-api/tenants');
-  const lasu = r.body.tenants.find(t => t.subdomain === 'lasu');
-  r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = r.body.tenants.find(t => t.subdomain === 'dsu');
+  r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, new URL(r.body.link).searchParams.get('token'), 'Registrar2026', 'Dr Registrar'), 'owner set up');
-  r = await owner('POST', '/app-api/users', { email: 'officer@lasu.edu.ng', full_name: 'Records Officer', roles: ['officer'] });
-  const officer = client('lasu.localhost:3000');
+  r = await owner('POST', '/app-api/users', { email: 'officer@dsu.example', full_name: 'Records Officer', roles: ['officer'] });
+  const officer = client('dsu.localhost:3000');
   ok(await setup(officer, new URL(r.body.link).searchParams.get('token'), 'Officer2026x', 'Records Officer'), 'officer set up');
 
   // Role guard
@@ -67,7 +67,7 @@ async function setup(c, token, pw, name) {
   ok(r.status === 200, 'JPEG logo accepted');
   r = await owner('POST', '/app-api/settings/logo', { image: b64('logo.png') });
   ok(r.status === 200, 'PNG logo replaces it');
-  const anon = client('lasu.localhost:3000');
+  const anon = client('dsu.localhost:3000');
   r = await anon('GET', '/brand/logo');
   ok(r.status === 200 && r.ct === 'image/png' && r.body.length === fs.statSync(IMG + 'logo.png').size, 'public /brand/logo serves it');
   r = await client('demo.localhost:3000')('GET', '/brand/logo');
@@ -119,7 +119,7 @@ async function setup(c, token, pw, name) {
 
   // PDF signatory selection (straight through loadBrand)
   const { loadBrand } = require('../src/utils/branding');
-  const pick = async (type, date) => { const b = await loadBrand({ tenant_id: lasu.id, doc_type: type, issue_date: date }); return [b.slots[1] && b.slots[1].name, b.slots[2] && b.slots[2].name, b.legacy]; };
+  const pick = async (type, date) => { const b = await loadBrand({ tenant_id: dsu.id, doc_type: type, issue_date: date }); return [b.slots[1] && b.slots[1].name, b.slots[2] && b.slots[2].name, b.legacy]; };
   let p = await pick('Transcript', '2023-05-01');
   ok(p[0] === 'Mrs Old Registrar' && p[1] === 'Prof VC' && !p[2], '2023 transcript -> old Registrar + VC');
   p = await pick('Certificate', '2025-03-01');

@@ -22,7 +22,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
     page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) problems.push(`${label}: ${m.text()}`); });
   };
   const check = (label, before) => { const mine = problems.slice(before); ok(!mine.length, label + (mine.length ? ' :: ' + mine.join(' | ') : '')); };
-  const D = 'http://demo.localhost:3000', L = 'http://lasu.localhost:3000';
+  const D = 'http://demo.localhost:3000', L = 'http://dsu.localhost:3000';
 
   const hdr = await new Promise(res => http.get({ host: 'localhost', port: 3000, path: '/help.html', headers: { Host: 'demo.localhost:3000' } }, x => { x.resume(); res(x.headers['content-security-policy'] || ''); }));
   ok(/script-src 'self'(;|$)/.test(hdr) && /script-src-attr 'none'/.test(hdr), 'CSP has no unsafe-inline for scripts');
@@ -70,7 +70,7 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   // ── Holder portal and pay page ──
   ctx = await browser.newContext(); page = await ctx.newPage(); watch(page, 'holder'); n = problems.length;
   await page.goto(L + '/student.html'); await page.waitForTimeout(800);
-  await page.goto(L + '/pay.html?doc=NOPE-1&type=Certificate&issued_by=LASU'); await page.waitForTimeout(800);
+  await page.goto(L + '/pay.html?doc=NOPE-1&type=Certificate&issued_by=DSU'); await page.waitForTimeout(800);
   ok((await page.textContent('#doc-title')) === 'Certificate', 'pay page script runs');
   check('holder portal and pay page', n);
   await ctx.close();
@@ -78,8 +78,8 @@ const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process
   // ── Staff workspace ──
   const a = await post('demo.localhost:3000', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   const t = await get('demo.localhost:3000', '/admin-api/tenants', a.cookie);
-  const lasu = t.tenants.find(x => x.subdomain === 'lasu');
-  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'csp.owner@lasu.edu.ng', full_name: 'Csp Owner' }, a.cookie);
+  const dsu = t.tenants.find(x => x.subdomain === 'dsu');
+  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'csp.owner@dsu.example', full_name: 'Csp Owner' }, a.cookie);
   ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); page = await ctx.newPage(); watch(page, 'staff'); n = problems.length;
   await page.goto(inv.body.link);
   await page.fill('#pw1', 'CspOwner2026pass'); await page.fill('#pw2', 'CspOwner2026pass');

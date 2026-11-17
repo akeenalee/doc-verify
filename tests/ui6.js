@@ -26,14 +26,14 @@ async function onboard(browser, link, out, errors) {
 (async () => {
   const a = await post('demo.localhost:3000', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   const t = await get('demo.localhost:3000', '/admin-api/tenants', a.cookie);
-  const lasu = t.tenants.find(x => x.subdomain === 'lasu');
-  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'ui.owner7@lasu.edu.ng', full_name: 'Folake Adeyemi' }, a.cookie);
+  const dsu = t.tenants.find(x => x.subdomain === 'dsu');
+  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'ui.owner7@dsu.example', full_name: 'Folake Adeyemi' }, a.cookie);
   const browser = await chromium.launch();
   const out = require('./out');
   const errors = [];
   const page = await onboard(browser, inv.body.link, out, errors);
   await page.waitForSelector('.cards');
-  const B = 'http://lasu.localhost:3000/app/';
+  const B = 'http://dsu.localhost:3000/app/';
   const shot = async n => page.screenshot({ path: out + 'p4c-' + n + '.png', fullPage: true });
   // Student records page: connect the test SIS
   await page.goto(B + '#/students'); await page.waitForSelector('#sis-f');

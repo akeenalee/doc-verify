@@ -10,8 +10,8 @@ function get(host, path, cookie) { return new Promise(res => http.get({ host: 'l
 (async () => {
   const a = await post('demo.localhost:3000', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
   const t = await get('demo.localhost:3000', '/admin-api/tenants', a.cookie);
-  const lasu = t.tenants.find(x => x.subdomain === 'lasu');
-  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'ui.owner5@lasu.edu.ng', full_name: 'Folake Adeyemi' }, a.cookie);
+  const dsu = t.tenants.find(x => x.subdomain === 'dsu');
+  const inv = await post('demo.localhost:3000', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'ui.owner5@dsu.example', full_name: 'Folake Adeyemi' }, a.cookie);
   const browser = await chromium.launch();
   const out = '/tmp/claude-0/-home-user/37513211-470b-500d-b235-312ece92b61a/scratchpad/';
   const errors = [];
@@ -28,7 +28,7 @@ function get(host, path, cookie) { return new Promise(res => http.get({ host: 'l
   await page.waitForSelector('#step-3', { state: 'visible' });
   await page.click('#go');
   await page.waitForSelector('.cards');
-  const B = 'http://lasu.localhost:3000/app/';
+  const B = 'http://dsu.localhost:3000/app/';
 
   // Issue one document through the API with the browser's session
   const doc = await page.evaluate(async () => {
@@ -59,10 +59,10 @@ function get(host, path, cookie) { return new Promise(res => http.get({ host: 'l
   // Graduate portal
   const sp = await browser.newPage({ viewport: { width: 390, height: 844 } });
   sp.on('pageerror', e => errors.push('portal: ' + e.message));
-  await sp.goto('http://lasu.localhost:3000/student.html');
+  await sp.goto('http://dsu.localhost:3000/student.html');
   await sp.click('#show-register');
   await sp.fill('#reg-name', 'Ngozi Okafor'); await sp.fill('#reg-matric', 'PHY/2021/044');
-  await sp.fill('#reg-institution', lasu.name); await sp.fill('#reg-pin', '4821');
+  await sp.fill('#reg-institution', dsu.name); await sp.fill('#reg-pin', '4821');
   await sp.screenshot({ path: out + 'p4-portal-register.png', fullPage: true });
   await sp.click('#register-btn');
   await sp.waitForSelector('#reg-err.show');
@@ -80,10 +80,10 @@ function get(host, path, cookie) { return new Promise(res => http.get({ host: 'l
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
   const pool = require('../src/db/pool');
   await pool.query(`INSERT INTO student_tokens (matric_number, institution, pin_hash, pin_salt, tenant_id) VALUES ('OLD/1', $1, $2, 'x', $3)`,
-    [lasu.name, hashPin('3333', 'x'), lasu.id]);
+    [dsu.name, hashPin('3333', 'x'), dsu.id]);
   const lp = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await lp.goto('http://lasu.localhost:3000/student.html');
-  await lp.fill('#login-matric', 'OLD/1'); await lp.fill('#login-institution', lasu.name); await lp.fill('#login-pin', '3333');
+  await lp.goto('http://dsu.localhost:3000/student.html');
+  await lp.fill('#login-matric', 'OLD/1'); await lp.fill('#login-institution', dsu.name); await lp.fill('#login-pin', '3333');
   await lp.click('#login-btn');
   await lp.waitForSelector('#claim-card', { state: 'visible' });
   await lp.screenshot({ path: out + 'p4-portal-claim.png', fullPage: true });

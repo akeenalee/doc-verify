@@ -20,11 +20,11 @@ function validateHex(val, def) {
 async function run() {
   console.log('\n=== UniVerify — Institution Onboarding ===\n');
 
-  const name         = (await ask('Institution full name (e.g. Lagos State University): ')).trim();
+  const name         = (await ask('Institution full name (e.g. Demo State University): ')).trim();
   const defaultSlug  = slugify(name);
-  const subdomainRaw = (await ask(`Subdomain (e.g. lasu) [default: ${defaultSlug}]: `)).trim();
+  const subdomainRaw = (await ask(`Subdomain (e.g. dsu) [default: ${defaultSlug}]: `)).trim();
   const subdomain    = (subdomainRaw || defaultSlug).toLowerCase().replace(/[^a-z0-9-]/g, '');
-  const shortCode    = (await ask('Short code for document IDs (e.g. LASU, max 8 chars): ')).trim().toUpperCase().slice(0, 8);
+  const shortCode    = (await ask('Short code for document IDs (e.g. DSU, max 8 chars): ')).trim().toUpperCase().slice(0, 8);
   const type         = (await ask('Institution type [academic/government/hospital/court] (default: academic): ')).trim() || 'academic';
   const email        = (await ask('Institution contact email: ')).trim();
   const phone        = (await ask('Contact phone (optional, Enter to skip): ')).trim() || null;

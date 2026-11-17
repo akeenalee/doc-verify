@@ -38,18 +38,18 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
 (async () => {
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, r.body.link, 'Registrar2026', 'Dr Registrar'), 'owner set up');
-  const x = await owner('POST', '/app-api/users', { email: 'officer@lasu.edu.ng', full_name: 'Officer', roles: ['officer'] });
-  const officer = client('lasu.localhost:3000'); await setup(officer, x.body.link, 'Password2026x', 'Officer');
-  const pub = client('lasu.localhost:3000');
+  const x = await owner('POST', '/app-api/users', { email: 'officer@dsu.example', full_name: 'Officer', roles: ['officer'] });
+  const officer = client('dsu.localhost:3000'); await setup(officer, x.body.link, 'Password2026x', 'Officer');
+  const pub = client('dsu.localhost:3000');
 
   // ── Signature v2 ─────────────────────────────────────────────────────────
   r = await officer('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'BSc Physics', issued_to: 'Ada Obi', matric_number: 'PHY/2020/001' });
   const doc = r.body.document;
-  ok(/^LASU-\d{8}-[0-9A-HJKMNP-TV-Z]{16}$/.test(doc.doc_id), 'doc ID has 16 base32 characters: ' + doc.doc_id);
+  ok(/^DSU-\d{8}-[0-9A-HJKMNP-TV-Z]{16}$/.test(doc.doc_id), 'doc ID has 16 base32 characters: ' + doc.doc_id);
   const url1 = r.body.verify_url;
   ok(/[?&]sig=2\.1\.[0-9a-f]{32}$/.test(url1), 'verify URL carries v2 signature with key 1: ' + url1.split('sig=')[1]);
   r = await pub('GET', path(url1));
@@ -122,15 +122,15 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   ok(r.status === 200, 'specimen preview renders');
 
   // ── CSRF guard ───────────────────────────────────────────────────────────
-  const evil = client('lasu.localhost:3000', { Origin: 'https://evil.example' });
+  const evil = client('dsu.localhost:3000', { Origin: 'https://evil.example' });
   r = await evil('POST', `/app-api/documents/${doc.doc_id}/claim-code`);
   ok(r.status === 403 || r.status === 500, 'staff write from another origin refused (' + r.status + ')');
-  const other = client('lasu.localhost:3000', { Origin: 'http://demo.localhost:3000' });
+  const other = client('dsu.localhost:3000', { Origin: 'http://demo.localhost:3000' });
   r = await other('POST', `/app-api/documents/${doc.doc_id}/claim-code`);
   ok(r.status === 403, 'staff write from another tenant\'s origin refused');
 
   // ── Claim codes ──────────────────────────────────────────────────────────
-  const inst = lasu.name;
+  const inst = dsu.name;
   r = await officer('POST', `/app-api/documents/${doc.doc_id}/claim-code`);
   ok(r.status === 201 && /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(r.body.code) && r.body.matric_number === 'PHY/2020/001',
      'officer creates claim code ' + r.body.code);
@@ -140,9 +140,9 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   const stored = await pool.query("SELECT code_hash FROM student_claim_codes WHERE matric_number = 'PHY/2020/001'");
   ok(stored.rows.every(x => x.code_hash !== code2 && !x.code_hash.includes(code2.replace(/-/g, ''))), 'only a hash of the code is stored');
 
-  const stu = client('lasu.localhost:3000');
+  const stu = client('dsu.localhost:3000');
   r = await stu('GET', '/api/tokens/config');
-  ok(r.body.claim_required === true, 'lasu portal asks for a claim code');
+  ok(r.body.claim_required === true, 'dsu portal asks for a claim code');
   r = await stu('POST', '/api/tokens/register', { matric_number: 'PHY/2020/001', institution: inst, pin: '4821' });
   ok(r.status === 400 && r.body.claim_required, 'register without code refused');
   r = await stu('POST', '/api/tokens/register', { matric_number: 'PHY/2020/001', institution: inst, pin: '4821', claim_code: code1 });
@@ -157,7 +157,7 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   ok(r.status === 200 && /pdf/.test(r.ct), 'graduate downloads official PDF');
   const st = await pool.query("SELECT pin_hash FROM student_tokens WHERE matric_number = 'PHY/2020/001'");
   ok(st.rows[0].pin_hash.startsWith('scrypt$'), 'new PIN stored with scrypt');
-  const stu2 = client('lasu.localhost:3000');
+  const stu2 = client('dsu.localhost:3000');
   r = await stu2('POST', '/api/tokens/register', { matric_number: 'PHY/2020/001', institution: inst, pin: '9999', claim_code: code2 });
   ok(r.status === 409, 'claimed account cannot be registered again, even with the used code');
 
@@ -165,8 +165,8 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   await officer('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'BSc Chemistry', issued_to: 'Bola Ade', matric_number: 'CHM/2020/007' });
   const salt = 'abcd';
   await pool.query(`INSERT INTO student_tokens (matric_number, institution, pin_hash, pin_salt, tenant_id, token_balance)
-                    VALUES ('CHM/2020/007', $1, $2, $3, $4, 2)`, [inst, hashPin('1111', salt), salt, lasu.id]);
-  const squat = client('lasu.localhost:3000');
+                    VALUES ('CHM/2020/007', $1, $2, $3, $4, 2)`, [inst, hashPin('1111', salt), salt, dsu.id]);
+  const squat = client('dsu.localhost:3000');
   r = await squat('POST', '/api/tokens/login', { matric_number: 'CHM/2020/007', institution: inst, pin: '1111' });
   ok(r.status === 200 && r.body.student.verified === false && r.body.student.claim_required === true, 'old account logs in, unverified');
   const rehashed = await pool.query("SELECT pin_hash FROM student_tokens WHERE matric_number = 'CHM/2020/007'");
@@ -181,12 +181,12 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   const docB = (await pool.query("SELECT doc_id FROM documents WHERE metadata->>'matric_number' = 'CHM/2020/007'")).rows[0].doc_id;
   r = await officer('POST', `/app-api/documents/${docB}/claim-code`);
   const realCode = r.body.code;
-  const real = client('lasu.localhost:3000');
+  const real = client('dsu.localhost:3000');
   r = await real('POST', '/api/tokens/register', { matric_number: 'CHM/2020/007', institution: inst, pin: '7777', claim_code: realCode });
   ok(r.status === 201 && r.body.student.verified === true, 'real graduate takes over the unclaimed account with the code');
   r = await squat('GET', '/api/tokens/me');
   ok(r.status === 401, 'squatter session ended');
-  r = await client('lasu.localhost:3000')('POST', '/api/tokens/login', { matric_number: 'CHM/2020/007', institution: inst, pin: '1111' });
+  r = await client('dsu.localhost:3000')('POST', '/api/tokens/login', { matric_number: 'CHM/2020/007', institution: inst, pin: '1111' });
   ok(r.status === 401, 'squatter PIN no longer works');
   r = await real('GET', '/api/tokens/my-documents');
   ok(r.status === 200 && r.body.documents.length === 1, 'real graduate sees the document');
@@ -194,8 +194,8 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   // Claim from inside the portal (legacy account, real owner)
   await officer('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'BSc Maths', issued_to: 'Chi Eze', matric_number: 'MTH/2020/003' });
   await pool.query(`INSERT INTO student_tokens (matric_number, institution, pin_hash, pin_salt, tenant_id)
-                    VALUES ('MTH/2020/003', $1, $2, $3, $4)`, [inst, hashPin('2222', salt), salt, lasu.id]);
-  const legacy = client('lasu.localhost:3000');
+                    VALUES ('MTH/2020/003', $1, $2, $3, $4)`, [inst, hashPin('2222', salt), salt, dsu.id]);
+  const legacy = client('dsu.localhost:3000');
   await legacy('POST', '/api/tokens/login', { matric_number: 'MTH/2020/003', institution: inst, pin: '2222' });
   const docC = (await pool.query("SELECT doc_id FROM documents WHERE metadata->>'matric_number' = 'MTH/2020/003'")).rows[0].doc_id;
   r = await officer('POST', `/app-api/documents/${docC}/claim-code`);
@@ -206,7 +206,7 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
 
   // Claim codes switched off (owner), then back on
   r = await owner('PATCH', '/app-api/settings/security', { student_claim_required: false });
-  r = await client('lasu.localhost:3000')('POST', '/api/tokens/register', { matric_number: 'ZZZ/1', institution: inst, pin: '1234' });
+  r = await client('dsu.localhost:3000')('POST', '/api/tokens/register', { matric_number: 'ZZZ/1', institution: inst, pin: '1234' });
   ok(r.status === 201, 'claim codes off: register without code works');
   r = await owner('PATCH', '/app-api/settings/security', { student_claim_required: true });
 
@@ -226,11 +226,11 @@ const lastScan = async id => (await pool.query('SELECT result FROM verification_
   ok(r.status === 200 && lines.length === 3 && /claim_code/.test(lines[0]) && lines.slice(1).every(l => /,[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4},/.test(l)),
      'batch claim-code CSV has a code per graduate');
   const csvCode = lines[1].split(',')[4];
-  r = await client('lasu.localhost:3000')('POST', '/api/tokens/register', { matric_number: 'BAT/1', institution: inst, pin: '5555', claim_code: csvCode });
+  r = await client('dsu.localhost:3000')('POST', '/api/tokens/register', { matric_number: 'BAT/1', institution: inst, pin: '5555', claim_code: csvCode });
   ok(r.status === 201, 'code from the batch CSV works');
 
   // Activity log
-  const acts = (await pool.query(`SELECT action FROM activity_log WHERE tenant_id = $1`, [lasu.id])).rows.map(a => a.action);
+  const acts = (await pool.query(`SELECT action FROM activity_log WHERE tenant_id = $1`, [dsu.id])).rows.map(a => a.action);
   for (const a of ['claim_code_issued', 'batch_claim_codes_issued', 'signing_key_rotated', 'strict_mode_enabled', 'strict_mode_disabled', 'claim_codes_not_required', 'claim_codes_required'])
     ok(acts.includes(a), 'activity logged: ' + a);
   const leaked = await pool.query(`SELECT COUNT(*) FROM activity_log WHERE detail::text LIKE $1`, ['%' + realCode + '%']);

@@ -35,22 +35,22 @@ async function setup(c, link, pw, name) {
 (async () => {
   const admin = client('demo.localhost:3000');
   await admin('POST', '/admin-api/login', { username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS });
-  const lasu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'lasu');
-  let r = await admin('POST', `/admin-api/tenants/${lasu.id}/owner-invite`, { email: 'registrar@lasu.edu.ng', full_name: 'Dr Registrar' });
-  const owner = client('lasu.localhost:3000');
+  const dsu = (await admin('GET', '/admin-api/tenants')).body.tenants.find(t => t.subdomain === 'dsu');
+  let r = await admin('POST', `/admin-api/tenants/${dsu.id}/owner-invite`, { email: 'registrar@dsu.example', full_name: 'Dr Registrar' });
+  const owner = client('dsu.localhost:3000');
   ok(await setup(owner, r.body.link, 'Registrar2026', 'Dr Registrar'), 'owner set up');
   const mk = async (email, name, roles) => {
     const x = await owner('POST', '/app-api/users', { email, full_name: name, roles });
-    const c = client('lasu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
+    const c = client('dsu.localhost:3000'); await setup(c, x.body.link, 'Password2026x', name); return c;
   };
 
   // Approval needs two active users: try with the owner alone first
   r = await owner('PATCH', '/app-api/settings/approval', { approval_required: true });
   ok(r.status === 409, 'approval refused with a single user: ' + r.body.error);
 
-  const officer  = await mk('officer@lasu.edu.ng', 'Records Officer', ['officer']);
-  const approver = await mk('approver@lasu.edu.ng', 'Deputy Registrar', ['approver']);
-  const auditor  = await mk('audit@lasu.edu.ng', 'Internal Audit', ['auditor']);
+  const officer  = await mk('officer@dsu.example', 'Records Officer', ['officer']);
+  const approver = await mk('approver@dsu.example', 'Deputy Registrar', ['approver']);
+  const auditor  = await mk('audit@dsu.example', 'Internal Audit', ['auditor']);
 
   // A single-issue certificate so the bulk upload raises a duplicate warning
   r = await owner('POST', '/app-api/documents', { doc_type: 'Certificate', title: 'BSc Economics', issued_to: 'Existing Holder', matric_number: 'ECO/2020/001' });
@@ -111,15 +111,15 @@ async function setup(c, link, pw, name) {
   r = await officer('POST', `/app-api/batches/${b1}/submit`);
   ok(r.status === 409, 'cannot submit twice');
   const docs = await pool.query('SELECT doc_id, issued_by_user, metadata FROM documents WHERE batch_id = $1', [b1]);
-  ok(docs.rows.length === 3 && docs.rows.every(d => d.doc_id.startsWith('LASU-')), '3 documents with batch_id');
+  ok(docs.rows.length === 3 && docs.rows.every(d => d.doc_id.startsWith('DSU-')), '3 documents with batch_id');
   ok(docs.rows.some(d => d.metadata.matric_number === 'CSC/2021/001'), 'matric upper-cased like single issue');
   const acts = await pool.query(`SELECT COUNT(*) FROM activity_log WHERE action = 'document_issued' AND detail->>'batch_id' = $1`, [b1]);
   ok(parseInt(acts.rows[0].count) === 3, 'one document_issued log per document');
   r = await officer('GET', `/app-api/documents/${docs.rows[0].doc_id}`);
   ok(r.body.document.batch_id === b1 && r.body.history.some(h => h.action === 'document_issued'), 'document detail links back to batch with history');
   const full = (await pool.query('SELECT * FROM documents WHERE doc_id = $1', [docs.rows[0].doc_id])).rows[0];
-  const vu = new URL(await require('../src/utils/docUtils').buildVerifyUrl(full, 'lasu'));
-  r = await client('lasu.localhost:3000')('GET', vu.pathname + vu.search);
+  const vu = new URL(await require('../src/utils/docUtils').buildVerifyUrl(full, 'dsu'));
+  r = await client('dsu.localhost:3000')('GET', vu.pathname + vu.search);
   ok(r.status !== 404, 'bulk-issued document resolves on /verify (' + r.status + ')');
 
   r = await officer('GET', `/app-api/batches/${b1}/pdfs.zip`);
@@ -197,7 +197,7 @@ async function setup(c, link, pw, name) {
   const ids = await pool.query('SELECT COUNT(DISTINCT doc_id) FROM documents WHERE batch_id = $1', [b5]);
   ok(ids.rows[0].count === '1000', '1,000 distinct document IDs');
 
-  const seen = new Set((await pool.query(`SELECT DISTINCT action FROM activity_log WHERE tenant_id = $1`, [lasu.id])).rows.map(a => a.action));
+  const seen = new Set((await pool.query(`SELECT DISTINCT action FROM activity_log WHERE tenant_id = $1`, [dsu.id])).rows.map(a => a.action));
   for (const a of ['batch_uploaded', 'batch_issued', 'batch_submitted', 'batch_approved', 'batch_rejected', 'batch_cancelled', 'approval_enabled', 'approval_disabled'])
     ok(seen.has(a), 'activity: ' + a);
   process.exit();
