@@ -68,14 +68,19 @@ function hotp(secret, counter) {
 }
 
 // Accepts the current 30 s step plus one either side for clock drift
-function verifyTotp(secret, code, now = Date.now()) {
-  if (!secret || !/^\d{6}$/.test(String(code || ''))) return false;
+// The time step the code matches (current, previous or next), or -1
+function totpStep(secret, code, now = Date.now()) {
+  if (!secret || !/^\d{6}$/.test(String(code || ''))) return -1;
   const step = Math.floor(now / 1000 / 30);
-  let ok = false;
+  let found = -1;
   for (const s of [step - 1, step, step + 1]) {
-    if (crypto.timingSafeEqual(Buffer.from(hotp(secret, s)), Buffer.from(String(code)))) ok = true;
+    if (crypto.timingSafeEqual(Buffer.from(hotp(secret, s)), Buffer.from(String(code)))) found = s;
   }
-  return ok;
+  return found;
+}
+
+function verifyTotp(secret, code, now = Date.now()) {
+  return totpStep(secret, code, now) >= 0;
 }
 
 function totpUri(secret, email, issuer) {
@@ -106,6 +111,6 @@ function generateInviteToken() {
 
 module.exports = {
   hashPassword, verifyPassword, passwordProblem,
-  generateTotpSecret, verifyTotp, totpUri, hotp, base32Encode,
+  generateTotpSecret, verifyTotp, totpStep, totpUri, hotp, base32Encode,
   generateRecoveryCodes, normaliseRecoveryCode, generateInviteToken, sha256,
 };
