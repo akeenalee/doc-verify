@@ -13,7 +13,10 @@
 // Nothing here is shown to verifiers or graduates; it's for staff issuing.
 
 const box = require('./secretBox');
-const dns    = require('dns').promises;
+const { cleanText } = require('./text');
+const dns    = require('dns');
+const http   = require('http');
+const https  = require('https');
 const net    = require('net');
 const pool   = require('../db/pool');
 
@@ -53,10 +56,59 @@ async function checkSisUrl(raw) {
   if (u.username || u.password) return { error: 'Put credentials in the secret field, not in the address.' };
   if (prod) {
     let addrs;
-    try { addrs = await dns.lookup(u.hostname, { all: true }); } catch (_) { return { error: `Couldn't find ${u.hostname}.` }; }
+    try { addrs = await dns.promises.lookup(u.hostname, { all: true }); } catch (_) { return { error: `Couldn't find ${u.hostname}.` }; }
     if (!addrs.length || addrs.some(a => privateAddress(a.address))) return { error: 'The SIS address must be reachable on the public internet.' };
   }
   return { url: u.toString().replace(/\/+$/, '') };
+}
+
+// The address check above runs once, when the URL is saved or used. A DNS
+// name can answer differently a moment later (DNS rebinding), so the request
+// itself resolves through this lookup, which refuses internal addresses at
+// connect time. The socket goes to the address that passed, nothing else.
+function safeLookup(hostname, opts, cb) {
+  if (typeof opts === 'function') { cb = opts; opts = {}; }
+  dns.lookup(hostname, { ...opts, all: true }, (err, addrs) => {
+    if (err) return cb(err);
+    if (process.env.NODE_ENV === 'production' && (!addrs.length || addrs.some(a => privateAddress(a.address)))) {
+      const e = new Error('The SIS address must be reachable on the public internet.');
+      e.code = 'EPRIVATE';
+      return cb(e);
+    }
+    if (opts.all) return cb(null, addrs);
+    if (!addrs.length) return cb(Object.assign(new Error(`Couldn't find ${hostname}.`), { code: 'ENOTFOUND' }));
+    cb(null, addrs[0].address, addrs[0].family);
+  });
+}
+
+const MAX_BODY = 20000;
+
+// GET with no redirects, a size cap and a deadline. Resolves { status, text }.
+function sisGet(url, headers, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === 'https:' ? https : http;
+    // A literal IP skips the lookup, so check it here
+    const literal = u.hostname.replace(/^\[|\]$/g, '');
+    if (net.isIP(literal) && process.env.NODE_ENV === 'production' && privateAddress(literal))
+      return reject(new Error('The SIS address must be reachable on the public internet.'));
+    const req = lib.request(u, { method: 'GET', headers, lookup: safeLookup, timeout: timeoutMs, agent: false }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400) { res.resume(); return reject(new Error(`SIS redirected (${res.statusCode}). Use the final address.`)); }
+      const chunks = []; let size = 0;
+      res.on('data', d => {
+        size += d.length;
+        if (size > MAX_BODY) { req.destroy(); reject(new Error('SIS answer too large.')); return; }
+        chunks.push(d);
+      });
+      res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString('utf8') }));
+      res.on('error', reject);
+    });
+    const deadline = setTimeout(() => req.destroy(Object.assign(new Error('SIS did not answer in time.'), { code: 'ETIMEDOUT' })), timeoutMs);
+    req.on('timeout', () => req.destroy(Object.assign(new Error('SIS did not answer in time.'), { code: 'ETIMEDOUT' })));
+    req.on('error', e => reject(e.code === 'ENOTFOUND' ? new Error(`Couldn't find ${u.hostname}.`) : e.code === 'ECONNREFUSED' ? new Error('SIS refused the connection.') : e));
+    req.on('close', () => clearTimeout(deadline));
+    req.end();
+  });
 }
 
 async function loadSis(tenantId) {
@@ -66,11 +118,13 @@ async function loadSis(tenantId) {
 
 function cleanRecord(o, matric) {
   const rec = { matric_number: normMatric(o.matric_number || matric) };
+  // SIS answers are outside input too
   for (const f of FIELDS) {
     const v = o[f] ?? (f === 'degree_class' ? o.class_of_degree : undefined);
-    if (v !== undefined && v !== null && String(v).trim()) rec[f] = String(v).trim().slice(0, f.endsWith('year') ? 4 : 200);
+    const c = cleanText(v, f.endsWith('year') ? 4 : 200);
+    if (c) rec[f] = c;
   }
-  if (o.status) rec.status = String(o.status).toLowerCase().slice(0, 30);
+  if (o.status) rec.status = cleanText(o.status, 30).toLowerCase();
   return rec;
 }
 
@@ -82,21 +136,14 @@ async function sisLookup(sis, tenantId, matric) {
   const secret = decryptSecret(tenantId, sis.secret_enc);
   if (sis.auth_type === 'bearer' && secret) headers.Authorization = 'Bearer ' + secret;
   if (sis.auth_type === 'basic' && secret) headers.Authorization = 'Basic ' + Buffer.from(secret).toString('base64');
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), sis.timeout_ms || 5000);
-  try {
-    const r = await fetch(`${url}/students/${encodeURIComponent(matric)}`, { headers, redirect: 'error', signal: ctl.signal });
-    if (r.status === 404) return { found: false };
-    if (!r.ok) throw new Error(`SIS answered ${r.status}.`);
-    const text = await r.text();
-    if (text.length > 20000) throw new Error('SIS answer too large.');
-    const body = JSON.parse(text);
-    if (!body || !body.full_name) throw new Error('SIS answer has no full_name.');
-    if (normMatric(body.matric_number || matric) !== matric) throw new Error('SIS returned a different matric number.');
-    return { found: true, record: cleanRecord(body, matric) };
-  } catch (e) {
-    throw new Error(e.name === 'AbortError' ? 'SIS did not answer in time.' : e.message);
-  } finally { clearTimeout(t); }
+  const r = await sisGet(`${url}/students/${encodeURIComponent(matric)}`, headers, sis.timeout_ms || 5000);
+  if (r.status === 404) return { found: false };
+  if (r.status < 200 || r.status > 299) throw new Error(`SIS answered ${r.status}.`);
+  let body;
+  try { body = JSON.parse(r.text); } catch (_) { throw new Error('SIS answer is not JSON.'); }
+  if (!body || !body.full_name) throw new Error('SIS answer has no full_name.');
+  if (normMatric(body.matric_number || matric) !== matric) throw new Error('SIS returned a different matric number.');
+  return { found: true, record: cleanRecord(body, matric) };
 }
 
 // The one lookup issuing uses. source: 'sis' | 'list' | null
@@ -230,5 +277,5 @@ async function registrationCheck(tenantId, docType, matric, name) {
 module.exports = {
   hasRecords, assess, registrationCheck, lockRecord, LOCKED,
   FIELDS, normMatric, sameName, nameKey, lookupStudent, lookupMany, markIssued, requireRegistered,
-  encryptSecret, decryptSecret, checkSisUrl, loadSis, sisLookup, statusCheck, AWARD_TYPES,
+  encryptSecret, decryptSecret, checkSisUrl, safeLookup, sisGet, loadSis, sisLookup, statusCheck, AWARD_TYPES,
 };

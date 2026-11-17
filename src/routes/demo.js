@@ -1,6 +1,7 @@
 const express    = require('express');
 const router     = require('express').Router();
 const pool       = require('../db/pool');
+const { cleanText } = require('../utils/text');
 const nodemailer = require('nodemailer');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireDemoAuth } = require('../middleware/demoAuth');
@@ -109,7 +110,9 @@ router.get('/access', async (req, res) => {
 
 // POST /demo/login
 router.post('/login', loginLimiter, async (req, res) => {
-  const { username, password, full_name, email, company, role } = req.body;
+  const { username, password } = req.body;
+  const full_name = cleanText(req.body.full_name, 200), email = cleanText(req.body.email, 200),
+        company = cleanText(req.body.company, 200), role = cleanText(req.body.role, 100);
   const tenantId = req.tenant?.id;
 
   if (!DEMO_PASS) return res.status(503).json({ error:'Demo sign-in is not configured on this server.' });
