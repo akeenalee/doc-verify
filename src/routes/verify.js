@@ -3,6 +3,7 @@ const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
+const { settleVerificationPayment } = require('../utils/payments');
 const { verifyDocSignature, tenantBaseUrl, tenantSubdomain,
         signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
 const { parseSig, checkV2, signDocument } = require('../utils/signing');
@@ -101,14 +102,11 @@ router.get('/', async (req, res) => {
     // 2. Check if employer just paid
     if (paid) {
       try {
+        // The reference must be one we created for this document, paid in full
         const txn = await verifyTransaction(paid);
-        if (txn.status === 'success' && txn.metadata?.doc_id === doc) {
-          await pool.query(
-            `UPDATE verification_payments
-             SET result_shown = true, paystack_status = 'success', completed_at = NOW()
-             WHERE paystack_ref = $1`,
-            [paid]
-          );
+        const settled = await settleVerificationPayment(txn);
+        if (settled.ok && settled.doc_id === doc) {
+          await pool.query('UPDATE verification_payments SET result_shown = true WHERE paystack_ref = $1', [paid]);
           await logScan(doc, ip, userAgent, scanResult(docData), 'employer_payment', req._tenantId);
           return res.send(renderResult(docData, isExpired));
         }
@@ -138,14 +136,11 @@ router.get('/api/payment-callback', async (req, res) => {
     const txn = await verifyTransaction(reference);
     if (txn.status !== 'success') return res.redirect('/pay.html?error=payment_failed');
 
-    const doc_id = txn.metadata?.doc_id;
-    if (!doc_id) return res.redirect('/pay.html?error=invalid_metadata');
-
-    await pool.query(
-      `UPDATE verification_payments SET paystack_status='success', completed_at=NOW()
-       WHERE paystack_ref=$1`,
-      [reference]
-    );
+    // Which document was paid for comes from our record of the payment, not
+    // from the transaction's metadata, which a payer could set themselves
+    const settled = await settleVerificationPayment(txn);
+    if (!settled.ok) return res.redirect('/pay.html?error=payment_failed');
+    const doc_id = settled.doc_id;
 
     // The payer comes back without the QR's own link, so sign it afresh
     const d = await pool.query(
