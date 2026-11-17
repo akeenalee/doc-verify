@@ -5,6 +5,7 @@ const { cleanText } = require('../utils/text');
 const { hashPin, requireStudentAuth } = require('../middleware/studentAuth');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { initializeTransaction } = require('../utils/paystack');
+const { splitFor } = require('../utils/payouts');
 const { settleTokenPurchase } = require('../utils/payments');
 const { tenantBaseUrl, buildVerifyUrl } = require('../utils/docUtils');
 
@@ -286,7 +287,10 @@ router.post('/buy', requireStudentAuth, async (req, res) => {
     if (!student.rows.length) return res.status(404).json({ error: 'Student not found.' });
 
     const { matric_number, institution, email } = student.rows[0];
+    // The school's share settles to its own bank when it has a payout set up
+    const split = await splitFor(tenantId, bundle.amountKobo);
     const { url, reference } = await initializeTransaction({
+      split,
       email: email || `${matric_number.toLowerCase()}@verify.placeholder`,
       amountKobo: bundle.amountKobo,
       metadata: {
@@ -299,9 +303,10 @@ router.post('/buy', requireStudentAuth, async (req, res) => {
 
     await pool.query(
       `INSERT INTO token_purchases
-         (matric_number, institution, bundle_size, amount_kobo, paystack_ref, email)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [matric_number, institution, bundle.tokens, bundle.amountKobo, reference, email]
+         (matric_number, institution, bundle_size, amount_kobo, paystack_ref, email, subaccount_code, platform_fee_kobo, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [matric_number, institution, bundle.tokens, bundle.amountKobo, reference, email,
+       split ? split.subaccount : null, split ? split.transaction_charge : null, tenantId]
     );
     res.json({ payment_url:url, reference });
   } catch (err) {

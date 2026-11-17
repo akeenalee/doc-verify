@@ -341,7 +341,9 @@
         const actions = isRoot ? '' : t.active
           ? '<button class="action-btn revoke" data-toggle="' + esc(t.id) + '" data-active="false" data-name="' + esc(t.name) + '">Suspend</button>'
           : '<button class="action-btn activate" data-toggle="' + esc(t.id) + '" data-active="true" data-name="' + esc(t.name) + '">Restore</button>';
-        const ownerBtn = '<button class="action-btn copy" style="margin-right:4px" data-owner="' + esc(t.id) + '" data-name="' + esc(t.name) + '">Invite owner</button>';
+        const payoutBtn = isRoot ? '' : '<button class="action-btn ' + (t.payout_active ? 'activate' : 'copy') + '" style="margin-right:4px" data-payout="' + esc(t.id) + '" data-name="' + esc(t.name) + '">'
+          + (t.payout_active ? 'Payout ' + esc(t.payout_bank || '') + ' ****' + esc(t.payout_last4) : t.payout_last4 ? 'Payout paused' : 'Set up payout') + '</button>';
+        const ownerBtn = payoutBtn + '<button class="action-btn copy" style="margin-right:4px" data-owner="' + esc(t.id) + '" data-name="' + esc(t.name) + '">Invite owner</button>';
         const copyBtn = (!isRoot && t.presenter_link)
           ? '<button class="action-btn copy" style="margin-right:4px" data-copy="' + esc(t.presenter_link) + '">Copy</button>' : '';
         return '<tr>'
@@ -371,9 +373,10 @@
   });
 
   document.getElementById('institutions-body').addEventListener('click', async e => {
-    const el = e.target.closest('[data-copy],[data-toggle],[data-newlink],[data-owner]');
+    const el = e.target.closest('[data-copy],[data-toggle],[data-newlink],[data-owner],[data-payout]');
     if (!el) return;
     if (el.dataset.copy) { copyToClipboard(el.dataset.copy); return; }
+    if (el.dataset.payout) { openPayout(el.dataset.payout, el.dataset.name); return; }
     if (el.dataset.owner) {
       // First Owner for the institution's staff app; they invite the rest
       const email = (prompt('Owner email for ' + el.dataset.name + ' (e.g. the Registrar):') || '').trim();
@@ -415,3 +418,57 @@
   // ── INIT ──────────────────────────────────────────────────────────────────
   loadStats();
   loadTokens();
+
+// ── Payouts: one Paystack subaccount per institution ────────────────────────
+let _payoutId = null, _banks = null;
+async function openPayout(id, name) {
+  _payoutId = id;
+  const m = document.getElementById('payout-modal');
+  const msg = document.getElementById('po-msg');
+  msg.textContent = ''; msg.style.color = '#8899AA';
+  document.getElementById('po-title').textContent = 'Payout for ' + name;
+  document.getElementById('po-account').value = '';
+  m.classList.add('show');
+  const sel = document.getElementById('po-bank');
+  try {
+    if (!_banks) {
+      const r = await fetch('/admin-api/tenants/banks'); const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not load banks.');
+      _banks = d.banks;
+    }
+    sel.innerHTML = '<option value="">Choose bank</option>' + _banks.map(b => '<option value="' + esc(b.code) + '">' + esc(b.name) + '</option>').join('');
+    const r = await fetch('/admin-api/tenants/' + encodeURIComponent(id) + '/payout'); const d = await r.json();
+    const p = d.payout;
+    document.getElementById('po-current').textContent = p
+      ? (p.active ? 'Paying out to ' : 'Paused. Last account: ') + (p.bank_name || '') + ' ****' + p.account_last4 + (p.account_name ? ' (' + p.account_name + ')' : '') + ', fee ' + p.platform_fee_percent + '%'
+      : 'Not set up. Payments for this institution go to the Innovation Lens account.';
+    document.getElementById('po-fee').value = p ? p.platform_fee_percent : 10;
+    document.getElementById('po-bearer').value = p ? p.fee_bearer : 'account';
+    document.getElementById('po-pause').style.display = p && p.active ? '' : 'none';
+  } catch (e) { msg.textContent = e.message; msg.style.color = '#F09595'; }
+}
+document.getElementById('po-cancel').addEventListener('click', () => document.getElementById('payout-modal').classList.remove('show'));
+document.getElementById('po-save').addEventListener('click', async () => {
+  const msg = document.getElementById('po-msg'), btn = document.getElementById('po-save');
+  const fee = parseFloat(document.getElementById('po-fee').value);
+  btn.disabled = true; msg.style.color = '#8899AA'; msg.textContent = 'Checking the account with Paystack...';
+  try {
+    const r = await fetch('/admin-api/tenants/' + encodeURIComponent(_payoutId) + '/payout', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bank_code: document.getElementById('po-bank').value, account_number: document.getElementById('po-account').value.trim(),
+        platform_fee_bps: Math.round(fee * 100), fee_bearer: document.getElementById('po-bearer').value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed.');
+    msg.style.color = '#5DCAA5';
+    msg.textContent = 'Saved. Paystack confirmed ' + (d.payout.account_name || 'the account') + '. New payments split from now.';
+    loadInstitutions();
+  } catch (e) { msg.style.color = '#F09595'; msg.textContent = e.message; }
+  finally { btn.disabled = false; }
+});
+document.getElementById('po-pause').addEventListener('click', async () => {
+  if (!confirm('Pause payouts? New payments for this institution go to the Innovation Lens account until you set it up again.')) return;
+  const r = await fetch('/admin-api/tenants/' + encodeURIComponent(_payoutId) + '/payout', { method: 'DELETE' });
+  const d = await r.json().catch(() => ({}));
+  document.getElementById('po-msg').textContent = r.ok ? 'Payouts paused.' : (d.error || 'Failed.');
+  loadInstitutions();
+});

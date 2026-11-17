@@ -3,6 +3,7 @@ const https   = require('https');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { initializeTransaction, verifyTransaction } = require('../utils/paystack');
+const { splitFor } = require('../utils/payouts');
 const { settleVerificationPayment } = require('../utils/payments');
 const { verifyDocSignature, tenantBaseUrl, tenantSubdomain,
         signPreviewToken, verifyPreviewToken } = require('../utils/docUtils');
@@ -306,7 +307,10 @@ router.post('/api/initiate-payment', async (req, res) => {
     if (doc.expiry_date && new Date(doc.expiry_date) < new Date()) {
       return res.status(400).json({ error: 'This document has expired and cannot be verified.' });
     }
+    // The fee belongs to the school that issued the document
+    const split = await splitFor(doc.tenant_id, VERIFY_FEE_KOBO);
     const { url, reference } = await initializeTransaction({
+      split,
       email,
       amountKobo: VERIFY_FEE_KOBO,
       metadata: {
@@ -320,9 +324,9 @@ router.post('/api/initiate-payment', async (req, res) => {
     });
 
     await pool.query(
-      `INSERT INTO verification_payments (doc_id, payer_email, amount_kobo, paystack_ref)
-       VALUES ($1, $2, $3, $4)`,
-      [doc_id, email, VERIFY_FEE_KOBO, reference]
+      `INSERT INTO verification_payments (doc_id, payer_email, amount_kobo, paystack_ref, subaccount_code, platform_fee_kobo)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [doc_id, email, VERIFY_FEE_KOBO, reference, split ? split.subaccount : null, split ? split.transaction_charge : null]
     );
 
     res.json({ payment_url: url, reference, fee: VERIFY_FEE_KOBO / 100 });

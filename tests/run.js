@@ -23,7 +23,7 @@ const http = require('http');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9'];
+const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10'];
 
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(2); }
 
@@ -49,6 +49,8 @@ const serverEnv = {
   SIGNING_MASTER_KEY: '', ADMIN_USER, ADMIN_PASS, ADMIN_TOTP_SECRET: '',
   MOCK_SIS_ENABLED: '1', MOCK_SIS_TOKEN: '',
   PAYSTACK_SECRET_KEY: 'sk_test_local_only', PAYSTACK_PUBLIC_KEY: '',
+  // A fake Paystack on localhost (e2e10 runs one); other suites get a refused connection
+  PAYSTACK_API_BASE: 'http://localhost:3999',
   SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '', IPINFO_TOKEN: '', RETENTION_DISABLED: '1',
 };
 const suiteEnv = { ...process.env, TEST_DATABASE_URL: url, ADMIN_USER, ADMIN_PASS,

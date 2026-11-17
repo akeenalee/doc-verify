@@ -13,6 +13,7 @@ End-to-end suites that drive a real server and a real PostgreSQL database throug
 | `e2e7.js` | Payments: webhook signature, each payment credited exactly once |
 | `e2e8.js` | Account protection: holder PIN lockout, staff TOTP secrets encrypted and single-use codes |
 | `e2e9.js` | Input cleaning (markup, control and bidi characters) and SIS requests pinned to a checked public address |
+| `e2e10.js` | Payouts: school Paystack subaccounts, split sent on every payment, fake Paystack on :3999 |
 
 ## Running
 
