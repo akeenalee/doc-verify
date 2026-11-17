@@ -8,6 +8,7 @@ const pool    = require('../db/pool');
 const { loginLimiter } = require('../middleware/rateLimiter');
 const { requireStaff, clearStaff, ROLES } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
+const { sealTotp, openTotp, isSealed } = require('../utils/secretBox');
 const A = require('../utils/staffAuth');
 
 const MAX_FAILED   = 5;
@@ -95,7 +96,7 @@ router.post('/verify', loginLimiter, async (req, res) => {
 
   try {
     const r = await pool.query(
-      `SELECT id, email, full_name, roles, status, totp_secret, recovery_codes, locked_until
+      `SELECT id, email, full_name, roles, status, totp_secret, totp_last_step, recovery_codes, locked_until
        FROM tenant_users WHERE id = $1 AND tenant_id = $2`,
       [s.staffPendingUserId, req.tenant.id]
     );
@@ -106,7 +107,11 @@ router.post('/verify', loginLimiter, async (req, res) => {
 
     let ok = false, usedRecovery = false;
     if (req.body.code) {
-      ok = A.verifyTotp(user.totp_secret, String(req.body.code).replace(/\s/g, ''));
+      // A code works once: a step at or before the last one used is refused
+      const step = A.totpStep(openTotp(req.tenant.id, user.id, user.totp_secret), String(req.body.code).replace(/\s/g, ''));
+      ok = step >= 0 && step > Number(user.totp_last_step || 0);
+      if (ok) await pool.query(
+        'UPDATE tenant_users SET totp_last_step = $2 WHERE id = $1 AND COALESCE(totp_last_step, 0) < $2', [user.id, step]);
     } else if (req.body.recovery_code) {
       const norm = A.normaliseRecoveryCode(req.body.recovery_code);
       const hash = norm && A.sha256(norm);
@@ -121,6 +126,9 @@ router.post('/verify', loginLimiter, async (req, res) => {
     }
 
     delete s.staffPendingUserId; delete s.staffPendingTenant; delete s.staffPendingAt;
+    if (!isSealed(user.totp_secret)) // secret saved before encryption at rest: seal it now
+      await pool.query('UPDATE tenant_users SET totp_secret = $2 WHERE id = $1 AND totp_secret = $3',
+        [user.id, sealTotp(req.tenant.id, user.id, user.totp_secret), user.totp_secret]);
     await startStaffSession(req, user);
     await logActivity(req, { action: usedRecovery ? 'sign_in_recovery_code' : 'sign_in' });
     res.json({ success: true, recovery_codes_left: usedRecovery ? user.recovery_codes.length - 1 : undefined });
@@ -193,7 +201,7 @@ router.post('/invite/start', loginLimiter, async (req, res) => {
   await pool.query(
     `UPDATE tenant_users SET full_name = $2, password_hash = $3, totp_secret = $4,
             totp_enabled = FALSE, updated_at = NOW() WHERE id = $1`,
-    [u.id, fullName, A.hashPassword(req.body.password), secret]
+    [u.id, fullName, A.hashPassword(req.body.password), sealTotp(req.tenant.id, u.id, secret)]
   );
   const uri = A.totpUri(secret, u.email, `UniVerify ${req.tenant.short_code}`);
   res.json({ qr: await QRCode.toDataURL(uri, { margin: 1, width: 220 }), secret });
@@ -202,7 +210,7 @@ router.post('/invite/start', loginLimiter, async (req, res) => {
 router.post('/invite/confirm', loginLimiter, async (req, res) => {
   const u = await findInvite(req, String(req.body.token || ''));
   if (!u || !u.totp_secret) return res.status(404).json({ error: 'This setup link is invalid or has expired.' });
-  if (!A.verifyTotp(u.totp_secret, String(req.body.code || '').replace(/\s/g, '')))
+  if (!A.verifyTotp(openTotp(req.tenant.id, u.id, u.totp_secret), String(req.body.code || '').replace(/\s/g, '')))
     return res.status(401).json({ error: 'That code doesn\'t match. Check the time on your phone and try the newest code.' });
 
   const codes = A.generateRecoveryCodes();

@@ -26,6 +26,7 @@ const { hashPassword, verifyPassword } = require('../utils/staffAuth');
 const { redeemClaimCode, claimRequired } = require('../utils/claims');
 
 const PIN_RE = /^\d{4,8}$/;
+const PIN_MAX_FAILED = 5, PIN_LOCK_MINUTES = 15;
 const publicStudent = (s, extra = {}) => ({
   id: s.id, matric_number: s.matric_number, institution: s.institution, full_name: s.full_name,
   email: s.email, token_balance: s.token_balance, verified: !!s.verified_at, ...extra,
@@ -164,6 +165,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       [matric_number, institution, tenantId]
     );
     const student = r.rows[0];
+    if (student && student.locked_until && new Date(student.locked_until) > new Date())
+      return res.status(429).json({ error: `Too many wrong PINs. Try again in ${PIN_LOCK_MINUTES} minutes.` });
     let ok = false;
     if (student && String(student.pin_hash || '').startsWith('scrypt$')) {
       ok = verifyPassword(String(pin), student.pin_hash);
@@ -175,7 +178,16 @@ router.post('/login', loginLimiter, async (req, res) => {
       if (ok) await pool.query(`UPDATE student_tokens SET pin_hash = $1, pin_salt = '' WHERE id = $2`,
         [hashPassword(String(pin)), student.id]);
     }
-    if (!ok) return res.status(401).json({ error: 'Invalid matric number, institution, or PIN.' });
+    if (!ok) {
+      // Count the miss against the account; the 5th in a row locks it
+      if (student) await pool.query(
+        `UPDATE student_tokens
+            SET failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END,
+                locked_until  = CASE WHEN failed_logins + 1 >= $2 THEN NOW() + make_interval(mins => $3) ELSE locked_until END
+         WHERE id = $1`, [student.id, PIN_MAX_FAILED, PIN_LOCK_MINUTES]);
+      return res.status(401).json({ error: 'Invalid matric number, institution, or PIN.' });
+    }
+    await pool.query('UPDATE student_tokens SET failed_logins = 0, locked_until = NULL WHERE id = $1', [student.id]);
 
     startSession(req, student);
     res.json({ student: publicStudent(student, { claim_required: await claimRequired(pool, tenantId) }) });

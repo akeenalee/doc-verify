@@ -12,7 +12,7 @@
 //
 // Nothing here is shown to verifiers or graduates; it's for staff issuing.
 
-const crypto = require('crypto');
+const box = require('./secretBox');
 const dns    = require('dns').promises;
 const net    = require('net');
 const pool   = require('../db/pool');
@@ -28,27 +28,10 @@ function nameKey(n) {
 const sameName = (a, b) => nameKey(a) === nameKey(b);
 
 // ── SIS secret, encrypted at rest ───────────────────────────────────────────
-function masterRef() { return process.env.SIGNING_MASTER_KEY ? 'SIGNING_MASTER_KEY' : 'DOC_SECRET'; }
-function secretKey(ref, tenantId) {
-  const master = process.env[ref] || (ref === 'DOC_SECRET' ? 'dev-secret' : '');
-  if (!master) throw new Error(`${ref} is not set.`);
-  return Buffer.from(crypto.hkdfSync('sha256', master, 'univerify-sis', String(tenantId), 32));
-}
-function encryptSecret(tenantId, plain) {
-  if (!plain) return null;
-  const ref = masterRef(), iv = crypto.randomBytes(12);
-  const c = crypto.createCipheriv('aes-256-gcm', secretKey(ref, tenantId), iv);
-  const ct = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
-  return ['v1', ref, iv.toString('base64'), c.getAuthTag().toString('base64'), ct.toString('base64')].join(':');
-}
-function decryptSecret(tenantId, stored) {
-  if (!stored) return '';
-  const [v, ref, iv, tag, ct] = stored.split(':');
-  if (v !== 'v1') throw new Error('Unknown secret format.');
-  const d = crypto.createDecipheriv('aes-256-gcm', secretKey(ref, tenantId), Buffer.from(iv, 'base64'));
-  d.setAuthTag(Buffer.from(tag, 'base64'));
-  return Buffer.concat([d.update(Buffer.from(ct, 'base64')), d.final()]).toString('utf8');
-}
+// Same format and key derivation as before the code moved to secretBox
+const SIS = 'univerify-sis';
+const encryptSecret = (tenantId, plain) => box.seal(SIS, tenantId, plain);
+const decryptSecret = (tenantId, stored) => box.open(SIS, tenantId, stored);
 
 // ── SIS endpoint safety: https only in production, no internal addresses ────
 function privateAddress(ip) {
