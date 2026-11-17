@@ -1,0 +1,18 @@
+DELETE FROM batches WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM verification_log WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM activity_log WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM documents WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM tenant_users WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM signatories WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+UPDATE tenants SET logo_data=NULL, logo_mime=NULL, approval_required=FALSE WHERE subdomain='lasu';
+DELETE FROM student_claim_codes WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM student_tokens WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM tenant_sign_keys WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+UPDATE tenants SET sig_strict=FALSE, student_claim_required=TRUE WHERE subdomain='lasu';
+DELETE FROM scan_alerts WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+DELETE FROM print_specs WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='lasu');
+UPDATE tenants SET disclosure='{}' WHERE subdomain='lasu';
+DELETE FROM student_records;
+DELETE FROM student_lists;
+DELETE FROM tenant_sis;
+UPDATE tenants SET require_registered = FALSE;

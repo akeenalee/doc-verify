@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const pool    = require('../db/pool');
+const { settleTokenPurchase, settleVerificationPayment } = require('../utils/payments');
 const { verifyWebhookSignature } = require('../utils/paystack');
 
 router.post('/paystack', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -18,41 +18,17 @@ router.post('/paystack', express.raw({ type: 'application/json' }), async (req, 
 
   if (event.event !== 'charge.success') return;
 
-  const txn  = event.data;
+  const txn  = event.data || {};
   const meta = txn.metadata || {};
-  const ref  = txn.reference;
 
   try {
     if (meta.type === 'token_purchase') {
-      const existing = await pool.query(
-        `SELECT id FROM token_purchases WHERE paystack_ref=$1 AND paystack_status='success'`,
-        [ref]
-      );
-      if (existing.rows.length) return;
-
-      await pool.query(
-        `UPDATE token_purchases SET paystack_status='success', completed_at=NOW() WHERE paystack_ref=$1`,
-        [ref]
-      );
-      await pool.query(
-        `UPDATE student_tokens SET token_balance=token_balance+$1, updated_at=NOW()
-         WHERE matric_number=$2 AND institution=$3 AND tenant_id=$4`,
-        [meta.tokens, meta.matric_number, meta.institution, meta.tenant_id]
-      );
-      console.log(`Tokens credited: ${meta.tokens} to ${meta.matric_number}`);
-
+      const r = await settleTokenPurchase(txn);
+      if (r.credited) console.log(`Tokens credited: ${r.credited} for ${txn.reference}`);
+      else if (!r.ok) console.warn(`Token purchase ${txn.reference} not credited: ${r.reason}`);
     } else if (meta.type === 'employer_verification') {
-      const existing = await pool.query(
-        `SELECT id FROM verification_payments WHERE paystack_ref=$1 AND paystack_status='success'`,
-        [ref]
-      );
-      if (existing.rows.length) return;
-
-      await pool.query(
-        `UPDATE verification_payments SET paystack_status='success', completed_at=NOW() WHERE paystack_ref=$1`,
-        [ref]
-      );
-      console.log(`Employer payment confirmed: ${ref} for doc ${meta.doc_id}`);
+      const r = await settleVerificationPayment(txn);
+      if (!r.ok) console.warn(`Verifier payment ${txn.reference} not accepted: ${r.reason}`);
     }
   } catch (err) {
     console.error('Webhook processing error:', err);

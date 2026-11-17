@@ -5,12 +5,11 @@ const SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY;
 const BASE_URL   = process.env.BASE_URL || 'http://localhost:3000';
 
+// Constant-time check of x-paystack-signature (HMAC-SHA512 of the raw body)
 function verifyWebhookSignature(payload, signature) {
-  const hash = crypto
-    .createHmac('sha512', SECRET_KEY)
-    .update(payload)
-    .digest('hex');
-  return hash === signature;
+  if (!SECRET_KEY || typeof signature !== 'string' || !/^[0-9a-f]{128}$/i.test(signature)) return false;
+  const want = crypto.createHmac('sha512', SECRET_KEY).update(payload).digest();
+  return crypto.timingSafeEqual(want, Buffer.from(signature, 'hex'));
 }
 
 function paystackRequest(method, path, data = null) {
