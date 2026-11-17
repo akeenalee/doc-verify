@@ -104,7 +104,7 @@ const lastInit = () => [...calls].reverse().find(c => c.path === '/transaction/i
   r = await admin('PUT', `/admin-api/tenants/${dsu.id}/payout`, { bank_code: '058', account_number: '0123456789' });
   ok(r.status === 200 && r.body.payout.active && r.body.payout.account_last4 === '6789' && r.body.payout.account_name === 'DEMO STATE UNIVERSITY IGR',
     'payout set up after Paystack confirms the account name');
-  ok(r.body.payout.platform_fee_percent === 10 && r.body.payout.fee_bearer === 'account', 'default fee 10%, Innovation Lens pays the Paystack charge');
+  ok(r.body.payout.platform_fee_percent === 10 && r.body.payout.fee_bearer === 'subaccount', 'default fee 10%, the school pays the Paystack charge');
   const created = calls.find(c => c.method === 'POST' && c.path === '/subaccount');
   ok(created && created.body.settlement_bank === '058' && created.body.account_number === '0123456789' && created.body.percentage_charge === 10 && created.body.business_name === dsu.name,
     'subaccount created with bank, account, fee and school name');
@@ -129,7 +129,7 @@ const lastInit = () => [...calls].reverse().find(c => c.path === '/transaction/i
   r = await holder('POST', '/api/tokens/buy', { bundle_id: 2 });
   ok(r.status === 200 && /checkout/.test(r.body.payment_url), 'holder bundle purchase starts');
   let init = lastInit();
-  ok(init.body.subaccount === subCode && init.body.transaction_charge === 25000 && init.body.bearer === 'account' && init.body.amount === 250000,
+  ok(init.body.subaccount === subCode && init.body.transaction_charge === 25000 && init.body.bearer === 'subaccount' && init.body.amount === 250000,
     'holder payment split: N2,500 bundle, N250 platform fee, rest to dsu');
   const tp = (await pool.query('SELECT * FROM token_purchases WHERE paystack_ref = $1', [r.body.reference])).rows[0];
   ok(tp.subaccount_code === subCode && tp.platform_fee_kobo === 25000 && tp.tenant_id === dsu.id, 'purchase row records split, fee and school');
@@ -165,12 +165,12 @@ const lastInit = () => [...calls].reverse().find(c => c.path === '/transaction/i
 
   // ── Change fee and bearer: same subaccount updated, not a new one ──
   const before = subs.size;
-  r = await admin('PUT', `/admin-api/tenants/${dsu.id}/payout`, { bank_code: '044', account_number: '9876543210', platform_fee_bps: 1500, fee_bearer: 'subaccount' });
+  r = await admin('PUT', `/admin-api/tenants/${dsu.id}/payout`, { bank_code: '044', account_number: '9876543210', platform_fee_bps: 1500, fee_bearer: 'account' });
   ok(r.status === 200 && r.body.payout.subaccount_code === subCode && subs.size === before, 'changing the account updates the same subaccount');
   ok(subs.get(subCode).settlement_bank === '044' && subs.get(subCode).percentage_charge === 15, 'Paystack subaccount updated with the new bank and fee');
   r = await holder('POST', '/api/tokens/buy', { bundle_id: 1 });
   init = lastInit();
-  ok(init.body.transaction_charge === 15000 && init.body.bearer === 'subaccount', 'new fee and bearer used on the next payment');
+  ok(init.body.transaction_charge === 15000 && init.body.bearer === 'account', 'new fee and bearer used on the next payment');
 
   // ── Owner sees it read-only ──
   r = await owner('GET', '/app-api/settings/payout');
