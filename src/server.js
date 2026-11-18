@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Must load before express, pg and http so they can be traced (off without OTEL_EXPORTER_OTLP_ENDPOINT)
+require('./telemetry');
 const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');

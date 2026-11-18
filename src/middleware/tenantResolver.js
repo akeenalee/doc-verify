@@ -3,6 +3,7 @@
 // in the database, and attaches req.tenant to the request object.
 // Every route handler can then use req.tenant.id for all DB queries.
 
+const { tagTenant } = require('../telemetry');
 const pool = require('../db/pool');
 
 // Cache tenants in memory for 5 minutes to avoid a DB lookup on every request
@@ -87,6 +88,7 @@ async function tenantResolver(req, res, next) {
 
     // Attach tenant to request — available in all downstream route handlers
     req.tenant = tenant;
+    tagTenant(tenant.subdomain);
     next();
   } catch (err) {
     console.error('Tenant resolver error:', err.message);
@@ -109,4 +111,10 @@ function tenantResolverOptional(req, res, next) {
     });
 }
 
-module.exports = { tenantResolver, tenantResolverOptional, clearTenantCache };
+// Subdomain for a tenant id from the cache (metrics labels only); no DB call
+function cachedSubdomain(id) {
+  for (const [sub, c] of tenantCache) if (c.tenant && c.tenant.id === id) return sub;
+  return id ? 'other' : 'none';
+}
+
+module.exports = { cachedSubdomain, tenantResolver, tenantResolverOptional, clearTenantCache };

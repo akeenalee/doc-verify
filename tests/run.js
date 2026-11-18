@@ -23,7 +23,7 @@ const http = require('http');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10'];
+const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10', 'e2e11'];
 
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(2); }
 
@@ -52,6 +52,12 @@ const serverEnv = {
   // A fake Paystack on localhost (e2e10 runs one); other suites get a refused connection
   PAYSTACK_API_BASE: 'http://localhost:3999',
   SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '', IPINFO_TOKEN: '', RETENTION_DISABLED: '1',
+  // Telemetry off (a key set here wins over .env), except for e2e11 below
+  OTEL_EXPORTER_OTLP_ENDPOINT: '', OTEL_EXPORTER_OTLP_HEADERS: '',
+};
+// e2e11 runs a fake OTLP collector on :4318 and checks what reaches it
+const SUITE_SERVER_ENV = {
+  e2e11: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318', OTEL_METRIC_EXPORT_INTERVAL: '1000', OTEL_BSP_SCHEDULE_DELAY: '200' },
 };
 const suiteEnv = { ...process.env, TEST_DATABASE_URL: url, ADMIN_USER, ADMIN_PASS,
   PAYSTACK_SECRET_KEY: serverEnv.PAYSTACK_SECRET_KEY, DOC_SECRET: 'testsecret', SIGNING_MASTER_KEY: '' };
@@ -85,10 +91,10 @@ function health() {
   });
 }
 
-async function startServer(logFile) {
+async function startServer(logFile, extraEnv = {}) {
   if (await health()) fail('Something is already listening on port 3000. Stop it first.');
   const log = fs.openSync(logFile, 'w');
-  const srv = spawn(process.execPath, [path.join(ROOT, 'src', 'server.js')], { cwd: ROOT, env: serverEnv, stdio: ['ignore', log, log] });
+  const srv = spawn(process.execPath, [path.join(ROOT, 'src', 'server.js')], { cwd: ROOT, env: { ...serverEnv, ...extraEnv }, stdio: ['ignore', log, log] });
   for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 250));
     if (await health()) return srv;
@@ -122,7 +128,7 @@ function runSuite(name) {
   for (const s of suites) {
     console.log(`\n=== ${s} ===`);
     await sql('reset.sql');
-    const srv = await startServer(path.join(outDir, `server-${s}.log`));
+    const srv = await startServer(path.join(outDir, `server-${s}.log`), SUITE_SERVER_ENV[s]);
     try { results.push(await runSuite(s)); } finally { srv.kill(); await new Promise(r => setTimeout(r, 500)); }
   }
 
