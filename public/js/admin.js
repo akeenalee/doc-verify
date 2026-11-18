@@ -36,7 +36,7 @@
   });
 
   // ── TABS ──────────────────────────────────────────────────────────────────
-  const TABS = ['tokens', 'visitors', 'institutions'];
+  const TABS = ['tokens', 'visitors', 'institutions', 'support'];
   function showTab(name) {
     TABS.forEach(n => {
       document.getElementById('panel-' + n).style.display = n === name ? 'block' : 'none';
@@ -48,6 +48,61 @@
     loadInstitutions();
   });
   document.getElementById('refresh-institutions-btn').addEventListener('click', loadInstitutions);
+
+  // ── SUPPORT TICKETS ───────────────────────────────────────────────────────
+  const T_LABEL = { open: 'Waiting on us', answered: 'Answered', resolved: 'Resolved', closed: 'Closed' };
+  const C_LABEL = { technical: 'Not working', documents: 'Documents/QR', account: 'Users/sign-in', billing: 'Payments', other: 'Other' };
+  let _ticket = null;
+  async function loadSupport(show = true) {
+    const body = document.getElementById('support-body');
+    const status = document.getElementById('support-filter').value;
+    try {
+      const r = await fetch('/admin-api/support' + (status ? '?status=' + status : ''));
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not load tickets.');
+      const waiting = d.counts.open || 0;
+      document.getElementById('support-open-count').textContent = waiting ? '(' + waiting + ')' : '';
+      if (!show) return;
+      body.innerHTML = d.tickets.length ? d.tickets.map(t =>
+        '<tr class="st-row" data-id="' + esc(t.id) + '" style="cursor:pointer"><td>' + esc(t.ticket_no) + '</td><td>' + esc(t.tenant_name) + '</td><td>' + esc(t.subject) +
+        (t.priority === 'urgent' ? ' <strong style="color:#c0392b">URGENT</strong>' : '') + '</td><td>' + esc(C_LABEL[t.category] || t.category) + '</td><td>' + esc(t.created_by_name || '') +
+        '</td><td>' + esc(T_LABEL[t.status] || t.status) + '</td><td>' + esc(new Date(t.updated_at).toLocaleString('en-GB')) + '</td></tr>').join('')
+        : '<tr><td colspan="7" class="empty">No tickets here.</td></tr>';
+    } catch (e) { body.innerHTML = '<tr><td colspan="7" class="empty">' + esc(e.message) + '</td></tr>'; }
+  }
+  async function openTicket(id) {
+    const r = await fetch('/admin-api/support/' + encodeURIComponent(id));
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || 'Could not open the ticket.'); return; }
+    const t = d.ticket; _ticket = t;
+    document.getElementById('st-title').textContent = '#' + t.ticket_no + ': ' + t.subject;
+    document.getElementById('st-sub').textContent = t.tenant_name + ' (' + t.subdomain + ') · ' + (t.created_by_name || '') + ' · ' + (C_LABEL[t.category] || t.category) +
+      (t.priority === 'urgent' ? ' · URGENT' : '') + ' · ' + (T_LABEL[t.status] || t.status) + (t.page ? ' · page ' + t.page : '');
+    document.getElementById('st-thread').innerHTML = d.messages.map(m =>
+      '<div style="border:1px solid rgba(255,255,255,0.15);border-left:4px solid ' + (m.author_kind === 'support' ? '#B8860B' : '#6FA8DC') + ';border-radius:8px;padding:10px 14px;margin-bottom:10px;color:inherit;background:rgba(255,255,255,0.03)">' +
+      '<div style="font-size:13px;margin-bottom:6px"><strong style="color:inherit">' + esc(m.author_name) + '</strong> <span style="opacity:0.65">' + esc(new Date(m.created_at).toLocaleString('en-GB')) + '</span></div>' +
+      '<div style="white-space:pre-wrap;color:inherit">' + esc(m.body) + '</div></div>').join('');
+    const closed = t.status === 'closed';
+    document.getElementById('st-form').style.display = closed ? 'none' : '';
+    document.getElementById('st-resolve').style.display = ['open', 'answered'].includes(t.status) ? '' : 'none';
+    document.getElementById('st-reply').value = '';
+    document.getElementById('support-ticket').style.display = '';
+    document.getElementById('support-ticket').scrollIntoView({ behavior: 'smooth' });
+  }
+  async function supportPost(path, body, msg) {
+    const r = await fetch('/admin-api/support/' + _ticket.id + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.error || 'That did not work.'); return; }
+    toast(msg); await openTicket(_ticket.id); loadSupport();
+  }
+  const sendReply = resolve => supportPost('/reply', { message: document.getElementById('st-reply').value, resolve }, resolve ? 'Reply sent, ticket resolved.' : 'Reply sent.');
+  document.getElementById('st-send').addEventListener('click', () => sendReply(false));
+  document.getElementById('st-send-resolve').addEventListener('click', () => sendReply(true));
+  document.getElementById('st-resolve').addEventListener('click', () => supportPost('/resolve', {}, 'Ticket resolved.'));
+  document.getElementById('support-body').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openTicket(tr.dataset.id); });
+  document.getElementById('support-filter').addEventListener('change', () => loadSupport());
+  document.getElementById('refresh-support-btn').addEventListener('click', () => loadSupport());
+  document.getElementById('tab-support-btn').addEventListener('click', () => { showTab('support'); loadSupport(); });
 
   document.getElementById('tab-tokens-btn').addEventListener('click', () => {
     showTab('tokens');
@@ -71,6 +126,8 @@
     if (d.can_onboard) {
       document.getElementById('onboard-link').style.display = '';
       document.getElementById('tab-institutions-btn').style.display = '';
+      document.getElementById('tab-support-btn').style.display = '';
+      loadSupport(false);
     }
   }).catch(() => {});
 

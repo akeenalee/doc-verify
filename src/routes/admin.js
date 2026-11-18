@@ -54,6 +54,7 @@ router.use(requireAdminAuth);
 
 // Institution onboarding (IL root tenant only, enforced inside the router)
 router.use('/tenants', tenantsRouter);
+router.use('/support', require('./adminSupport'));
 
 // Helper — get tenantId from session or current request
 function getTenantId(req) {

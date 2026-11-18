@@ -192,3 +192,11 @@ tr.click:hover td { background: #f8fafc; }
 .badge.j-delivered { background: var(--ok-bg); color: var(--ok); }
 .badge.j-cancelled { background: #f1f2f4; color: var(--muted); }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* Support ticket thread */
+.thread { display: flex; flex-direction: column; gap: 12px; }
+.msg { border: 1px solid var(--line, #e3e3e3); border-radius: 8px; padding: 12px 14px; max-width: 760px; }
+.msg.from-support { border-left: 4px solid var(--accent); background: #fbf8ef; }
+.msg.from-school { border-left: 4px solid var(--brand, #1A3A5C); }
+.msg-head { font-size: 13px; margin-bottom: 6px; }
+.msg-body { white-space: pre-wrap; line-height: 1.5; }

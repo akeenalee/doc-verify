@@ -75,7 +75,16 @@ async function verifyTransaction(reference) {
 
 // ── Subaccounts (school payouts) ──────────────────────────────────────────
 async function listBanks() {
-  const d = must(await paystackRequest('GET', '/bank?country=nigeria&currency=NGN&perPage=100'), 'bank list');
+  // Paystack lists 200+ Nigerian banks; one page of 100 cut off banks late in
+  // the alphabet (Wema, Zenith...), so follow the cursor to the end.
+  const d = [];
+  let next = '';
+  for (let page = 0; page < 10; page++) {
+    const raw = await paystackRequest('GET', '/bank?country=nigeria&currency=NGN&perPage=100&use_cursor=true' + (next ? '&next=' + encodeURIComponent(next) : ''));
+    d.push(...must(raw, 'bank list'));
+    next = raw.meta && raw.meta.next;
+    if (!next) break;
+  }
   return d.filter(b => b.active !== false && !b.is_deleted).map(b => ({ code: b.code, name: b.name }));
 }
 

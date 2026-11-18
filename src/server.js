@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Must load before express, pg and http so they can be traced (off without OTEL_EXPORTER_OTLP_ENDPOINT)
+require('./telemetry');
 const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');
@@ -139,6 +141,7 @@ app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));
 app.use('/app-api/print', require('./routes/staffPrint'));
 app.use('/app-api/students', require('./routes/staffStudents'));
+app.use('/app-api/support', require('./routes/staffSupport'));
 app.use('/app-api', staffAppRouter);
 
 // Institutions use the staff workspace; only the root demo tenant keeps the
