@@ -1,3 +1,5 @@
+const { count } = require('../telemetry');
+const { cachedSubdomain: tenantSub } = require('../middleware/tenantResolver');
 const express = require('express');
 const https   = require('https');
 const router  = express.Router();
@@ -118,6 +120,7 @@ router.get('/', async (req, res) => {
     }
 
     // 3. No token, no payment - redirect to payment page
+    count('verifications', { tenant: tenantSub(req._tenantId), result: 'payment_required', payment: 'none' });
     return res.redirect(
       `/pay.html?doc=${encodeURIComponent(doc)}&type=${encodeURIComponent(docData.doc_type || 'Document')}&issued_by=${encodeURIComponent(docData.issued_by)}`
     );
@@ -366,6 +369,7 @@ async function resolveGeo(ip) {
 }
 
 async function logScan(docId, ip, userAgent, result, paymentMethod = 'none', tenantId = null) {
+  count('verifications', { tenant: tenantSub(tenantId), result, payment: paymentMethod });
   try {
     // Resolve geolocation server-side
     const geo = await resolveGeo(ip);

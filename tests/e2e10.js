@@ -22,7 +22,12 @@ const fake = http.createServer((req, res) => {
     const body = raw ? JSON.parse(raw) : null;
     calls.push({ method: req.method, path: u.pathname, query: Object.fromEntries(u.searchParams), body, auth: req.headers.authorization });
     const send = (status, data, message) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status, message, data })); };
-    if (req.method === 'GET' && u.pathname === '/bank') return send(true, BANKS);
+    if (req.method === 'GET' && u.pathname === '/bank') {
+      // Two pages, like Paystack's cursor paging, so a bank on page 2 must still be offered
+      const second = u.searchParams.get('next') === 'page2';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: true, data: second ? [{ code: '057', name: 'Zenith Bank', active: true }] : BANKS, meta: second ? {} : { next: 'page2' } }));
+    }
     if (req.method === 'GET' && u.pathname === '/bank/resolve') {
       const n = u.searchParams.get('account_number');
       return n === '0000000000' ? send(false, null, 'Could not resolve account name. Check parameters or try again.')
@@ -87,7 +92,7 @@ const lastInit = () => [...calls].reverse().find(c => c.path === '/transaction/i
 
   // ── Admin sets up the payout ──
   let r = await admin('GET', '/admin-api/tenants/banks');
-  ok(r.status === 200 && r.body.banks.length === 2 && r.body.banks[0].code === '058', 'bank list from Paystack, closed banks left out');
+  ok(r.status === 200 && r.body.banks.length === 3 && r.body.banks[0].code === '058' && r.body.banks.some(b => b.code === '057'), 'bank list from Paystack, every page, closed banks left out');
   ok(calls.every(c => c.auth === 'Bearer ' + process.env.PAYSTACK_SECRET_KEY), 'Paystack called with the secret key');
   r = await admin('PUT', `/admin-api/tenants/${dsu.id}/payout`, { bank_code: '058', account_number: '012345678' });
   ok(r.status === 400 && /10 digits/.test(r.body.error), 'account number must be 10 digits');

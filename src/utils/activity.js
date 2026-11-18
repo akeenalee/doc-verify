@@ -2,6 +2,7 @@
 // Failures here never break the action itself; they are logged to stderr.
 
 const pool = require('../db/pool');
+const { count } = require('../telemetry');
 
 function clientIp(req) {
   return req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || null;
@@ -11,6 +12,7 @@ async function logActivity(req, { action, targetType = null, targetId = null, de
   const tenantId = req.tenant?.id;
   if (!tenantId) return;
   const staff = req.staff || null;
+  count('activity', { tenant: req.tenant?.subdomain, action });
   try {
     await pool.query(
       `INSERT INTO activity_log (tenant_id, user_id, actor, action, target_type, target_id, detail, ip_address)
