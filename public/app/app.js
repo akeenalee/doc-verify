@@ -17,6 +17,7 @@
   const RESULT_LABEL = { found: 'Verified', revoked: 'Revoked', superseded: 'Superseded', not_found: 'Not found', tampered: 'Tampered link', old_link: 'Older QR refused' };
   const PAY_LABEL = { none: 'None', student_token: 'Graduate credit', employer_payment: 'Verifier paid', replacement_pdf: 'Graduate download' };
   const ACTION_LABEL = {
+    support_ticket_opened: 'Opened support ticket', support_ticket_replied: 'Replied to support ticket', support_ticket_closed: 'Closed support ticket',
     sign_in: 'Signed in', sign_in_recovery_code: 'Signed in with a recovery code', sign_out: 'Signed out',
     password_changed: 'Changed password', account_setup_completed: 'Finished account setup',
     document_issued: 'Issued document', document_revoked: 'Revoked document', document_restored: 'Restored document',
@@ -203,6 +204,8 @@
     { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
     { path: '/students',  label: 'Student records', show: () => has('owner') },
     { path: '/payouts',   label: 'Payments and payouts', show: () => has('owner') },
+    { group: 'Help', show: () => !vendorOnly() },
+    { path: '/support',   label: 'Support', show: () => !vendorOnly() },
   ];
   function renderNav(active) {
     $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
@@ -394,6 +397,7 @@
     if (d.kind) parts.push(ALERT_LABEL[d.kind] || d.kind);
     if (d.size_mm) parts.push(`${d.paper || ''} ${d.anchor || ''}, ${d.x_mm} x ${d.y_mm} mm, ${d.size_mm} mm QR`);
     if (d.file_name) parts.push(d.file_name);
+    if (d.ticket_no) parts.push(`Ticket #${d.ticket_no}${d.subject ? ': ' + d.subject : ''}`);
     if (d.vendor) parts.push(`${d.title ? d.title + ', ' : ''}${d.vendor}${d.documents ? `, ${d.documents} documents` : ''}`);
     if (d.download) parts.push('Download ' + d.download);
     if (d.rows != null) parts.push(`${d.rows} rows` + (d.errors ? `, ${d.errors} with errors` : ''));
@@ -1227,6 +1231,61 @@
     });
   };
 
+  // ── Support tickets ─────────────────────────────────────────────────────
+  const TICKET_LABEL = { open: 'Waiting on UniVerify', answered: 'Answered', resolved: 'Resolved', closed: 'Closed' };
+  const TICKET_BADGE = { open: 'superseded', answered: 'active', resolved: 'b-issued', closed: 'b-cancelled' };
+  const CAT_LABEL = { technical: 'Something isn\'t working', documents: 'Documents and QR codes', account: 'Users and sign-in', billing: 'Payments and payouts', other: 'Something else' };
+
+  V['/support'] = async (el) => {
+    const d = await api('/support');
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Support</h1><div class="sub">Ask the UniVerify team for help. Everyone on your staff can see and follow your school's tickets.</div></div>
+        <div class="actions"><button class="btn" id="t-new">New ticket</button></div></div>
+      <div class="notice">Don't put passwords, authenticator codes or students' personal details in a ticket. A document ID or matric number is enough for us to find a record.</div>
+      <div class="panel">${d.tickets.length ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Category</th><th>Opened by</th><th>Status</th><th>Updated</th></tr></thead><tbody>
+        ${d.tickets.map(t => `<tr class="click" data-ticket="${esc(t.id)}"><td class="mono">${esc(t.ticket_no)}</td>
+          <td>${esc(t.subject)}${t.priority === 'urgent' ? ' ' + badge('revoked', 'Urgent') : ''}</td><td>${esc(CAT_LABEL[t.category] || t.category)}</td>
+          <td>${esc(t.created_by_name || '')}</td><td>${badge(TICKET_BADGE[t.status], TICKET_LABEL[t.status])}</td><td>${esc(fmtTime(t.updated_at))}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">No tickets yet. If something isn\'t working or you have a question, open one and we\'ll reply here and by email.</div>'}</div>`;
+    el.querySelectorAll('tr[data-ticket]').forEach(tr => tr.onclick = () => go('/support/' + tr.dataset.ticket));
+    $('t-new').onclick = () => modal({
+      title: 'New support ticket', submit: 'Send ticket',
+      lead: 'We reply here and email you when we do.',
+      fields: [
+        { name: 'category', label: 'What is it about?', type: 'select', value: 'technical', options: Object.entries(CAT_LABEL).map(([value, label]) => ({ value, label })) },
+        { name: 'subject', label: 'Subject', hint: 'For example: Bulk upload stops at row 40' },
+        { name: 'message', label: 'What happened?', type: 'textarea', hint: 'What you did, what you expected, and what you saw instead. Include a document ID if it\'s about one.' },
+        { name: 'priority', label: 'Is it blocking you?', type: 'select', value: 'normal', options: [{ value: 'normal', label: 'No, normal priority' }, { value: 'urgent', label: 'Yes, we can\'t issue or verify' }] },
+      ],
+      onSubmit: async v => { const r = await api('/support', { method: 'POST', body: v }); toast('Ticket sent. We\'ll reply here.'); go('/support/' + r.ticket.id); },
+    });
+  };
+
+  V['/support/ticket'] = async (el, q, id) => {
+    const d = await api('/support/' + encodeURIComponent(id));
+    const t = d.ticket, closed = t.status === 'closed';
+    el.innerHTML = `
+      <div class="page-head"><div><h1>#${esc(t.ticket_no)}: ${esc(t.subject)}</h1>
+        <div class="sub">${esc(CAT_LABEL[t.category] || t.category)} · opened by ${esc(t.created_by_name || '')} on ${esc(fmtTime(t.created_at))} · ${badge(TICKET_BADGE[t.status], TICKET_LABEL[t.status])}</div></div>
+        <div class="actions"><a class="btn ghost" href="#/support">All tickets</a>${closed ? '' : '<button class="btn secondary" id="t-close">Close ticket</button>'}</div></div>
+      <div class="panel thread">${d.messages.map(m => `<div class="msg ${m.author_kind === 'support' ? 'from-support' : 'from-school'}">
+          <div class="msg-head"><strong>${esc(m.author_name)}</strong> <span class="muted">${esc(fmtTime(m.created_at))}</span></div>
+          <div class="msg-body">${esc(m.body)}</div></div>`).join('')}</div>
+      ${closed ? '<div class="notice">This ticket is closed. Open a new one if you need more help.</div>' : `<div class="panel"><form id="t-reply">
+        <div class="field"><label for="t-msg">Reply</label><textarea id="t-msg" name="message" rows="4" required></textarea></div>
+        ${t.status === 'resolved' ? '<p class="muted">We marked this resolved. Replying reopens it.</p>' : ''}
+        <button class="btn" type="submit">Send reply</button></form></div>`}`;
+    if ($('t-close')) $('t-close').onclick = () => modal({
+      title: 'Close ticket', submit: 'Close ticket', lead: 'Close it once it\'s sorted. You can\'t reply to a closed ticket.',
+      onSubmit: async () => { await api('/support/' + t.id + '/close', { method: 'POST', body: {} }); toast('Ticket closed.'); render(); },
+    });
+    if ($('t-reply')) $('t-reply').onsubmit = async e => {
+      e.preventDefault();
+      try { await api('/support/' + t.id + '/reply', { method: 'POST', body: { message: e.target.message.value } }); toast('Reply sent.'); render(); }
+      catch (err) { toast(err.message); }
+    };
+  };
+
   // ── Router ──────────────────────────────────────────────────────────────
   async function render() {
     const { path, q } = routeParams();
@@ -1234,10 +1293,11 @@
     let view, arg;
     if (path.startsWith('/doc/')) { view = V['/doc']; arg = decodeURIComponent(path.slice(5)); }
     else if (path.startsWith('/batch/')) { view = V['/batch']; arg = decodeURIComponent(path.slice(7)); }
+    else if (path.startsWith('/support/')) { view = V['/support/ticket']; arg = decodeURIComponent(path.slice(9)); }
     else view = V[path];
     if (!view) { go(vendorOnly() ? '/print' : '/dashboard'); return; }
     if (vendorOnly() && path !== '/print') { go('/print'); return; }
-    renderNav(path.startsWith('/doc/') ? '/documents' : path.startsWith('/batch/') ? '/batches' : path);
+    renderNav(path.startsWith('/doc/') ? '/documents' : path.startsWith('/batch/') ? '/batches' : path.startsWith('/support/') ? '/support' : path);
     $('side').classList.remove('open');
     el.innerHTML = '<div class="empty">Loading...</div>';
     try { await view(el, q, arg); }

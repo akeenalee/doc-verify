@@ -79,4 +79,29 @@ async function sendScanAlert({ to, tenantName, subdomain, docId, kinds }) {
   }
 }
 
-module.exports = { sendStaffInvite, sendScanAlert };
+// Support tickets. to = one address or a list. Only the ticket number,
+// subject and a link go by email; the message itself stays in UniVerify.
+async function sendSupportNotice({ to, subject, heading, lines, link, linkText }) {
+  const t = getTransporter();
+  const list = (Array.isArray(to) ? to : [to]).filter(Boolean);
+  if (!t || !list.length) return false;
+  try {
+    await t.sendMail({
+      from:    `"UniVerify Support" <${process.env.SMTP_USER}>`,
+      to:      list.join(', '),
+      subject,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+          <h2 style="color:#1A3A5C;margin-bottom:4px">${esc(heading)}</h2>
+          ${lines.map(l => `<p>${esc(l)}</p>`).join('')}
+          <p><a href="${esc(link)}" style="display:inline-block;background:#1A3A5C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(linkText)}</a></p>
+        </div>`,
+    });
+    return true;
+  } catch (e) {
+    console.error('Support email failed:', e.message);
+    return false;
+  }
+}
+
+module.exports = { sendStaffInvite, sendScanAlert, sendSupportNotice };

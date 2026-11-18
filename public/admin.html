@@ -117,6 +117,7 @@
     <button class="tab-btn active" id="tab-tokens-btn">Demo Tokens</button>
     <button class="tab-btn" id="tab-visitors-btn">All Visitors</button>
     <button class="tab-btn" id="tab-institutions-btn" style="display:none">Institutions</button>
+    <button class="tab-btn" id="tab-support-btn" style="display:none">Support <span id="support-open-count"></span></button>
   </div>
 
   <!-- TOKENS PANEL -->
@@ -284,6 +285,53 @@
             <tr><td colspan="9" class="empty">Loading...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPPORT PANEL (IL root admin only) -->
+  <div id="panel-support" style="display:none">
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Support tickets</h2>
+          <div class="sub">Tickets schools open from the Support menu in their workspace. Urgent ones come first.</div>
+        </div>
+        <div>
+          <select id="support-filter" class="tab-btn" aria-label="Which tickets">
+            <option value="">Needs attention</option>
+            <option value="open">Waiting on us</option>
+            <option value="answered">Answered</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+          <button class="tab-btn" id="refresh-support-btn">Refresh</button>
+        </div>
+      </div>
+      <div class="scroll">
+        <table class="table">
+          <thead>
+            <tr><th>#</th><th>Institution</th><th>Subject</th><th>Category</th><th>Opened by</th><th>Status</th><th>Updated</th></tr>
+          </thead>
+          <tbody id="support-body">
+            <tr><td colspan="7" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel" id="support-ticket" style="display:none">
+      <div class="panel-header">
+        <div><h2 id="st-title"></h2><div class="sub" id="st-sub"></div></div>
+        <button class="tab-btn" id="st-resolve">Mark resolved</button>
+      </div>
+      <div id="st-thread" class="st-thread" style="color:#E8EEF5"></div>
+      <div id="st-form">
+        <div class="modal-label">Reply to the school</div>
+        <textarea id="st-reply" rows="5" style="width:100%;box-sizing:border-box;padding:10px;border-radius:6px;border:1px solid #ccc;font:inherit"></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="tab-btn active" id="st-send">Send reply</button>
+          <button class="tab-btn" id="st-send-resolve">Send and mark resolved</button>
+        </div>
       </div>
     </div>
   </div>

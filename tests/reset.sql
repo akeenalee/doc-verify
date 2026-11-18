@@ -1,3 +1,4 @@
+DELETE FROM support_tickets WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='dsu');
 DELETE FROM print_jobs WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='dsu');
 DELETE FROM tenant_payouts WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='dsu');
 DELETE FROM token_purchases WHERE tenant_id IN (SELECT id FROM tenants WHERE subdomain='dsu');

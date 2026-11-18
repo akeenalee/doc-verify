@@ -112,7 +112,8 @@ if (ENABLED) {
   sdk.start();
   console.log('Telemetry: OpenTelemetry on, sending to', new URL(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).host);
 
-  const stop = () => sdk.shutdown().catch(() => {}).finally(() => process.exit(0));
+  // Flush what's buffered, but never hold up a restart for more than 2 s
+  const stop = () => Promise.race([sdk.shutdown().catch(() => {}), new Promise(r => setTimeout(r, 2000))]).finally(() => process.exit(0));
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
 }

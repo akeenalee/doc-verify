@@ -23,7 +23,7 @@ const http = require('http');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10', 'e2e11'];
+const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10', 'e2e11', 'e2e12'];
 
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(2); }
 
@@ -129,7 +129,7 @@ function runSuite(name) {
     console.log(`\n=== ${s} ===`);
     await sql('reset.sql');
     const srv = await startServer(path.join(outDir, `server-${s}.log`), SUITE_SERVER_ENV[s]);
-    try { results.push(await runSuite(s)); } finally { srv.kill(); await new Promise(r => setTimeout(r, 500)); }
+    try { results.push(await runSuite(s)); } finally { srv.kill(); await new Promise(r => { if (srv.exitCode !== null) return r(); srv.once('exit', r); setTimeout(r, 5000); }); await new Promise(r => setTimeout(r, 300)); }
   }
 
   console.log('\n=== Summary ===');
