@@ -49,7 +49,35 @@
   };
   const TYPE_LABEL = { Certificate: 'Degree Certificate', Transcript: 'Academic Transcript', Completion: 'Course Completion Certificate',
     Admission: 'Admission Letter', Attestation: 'Attestation Letter' };
-  const typeLabel = t => TYPE_LABEL[t] || t || '';
+  const typeLabel = t => (tertiary() && TYPE_LABEL[t]) || t || '';
+
+  // Sector wording from /meta. The tertiary values reproduce the school text
+  // exactly; another sector says member, membership number and so on.
+  const TERT = { org: 'school', holder: 'graduate', holders: 'graduates', subject: 'student', subjects: 'students',
+    id_label: 'Matric number', id_short: 'Matric', records: 'student records', records_title: 'Student records',
+    portal: 'graduate portal', system: 'student information system', system_short: 'SIS', list: 'student list',
+    look_up: 'Look up student', name_label: 'Graduate full name' };
+  const TERT_FIELDS = { programme: 'Programme / course', faculty: 'Faculty', department: 'Department',
+    degree_class: 'Class of degree', entry_year: 'Entry year', graduation_year: 'Graduation year' };
+  const tertiary = () => !S.meta || !S.meta.sector || S.meta.sector === 'tertiary';
+  const T = () => (S.meta && S.meta.terms) || TERT;
+  const fieldLabel = k => (S.meta && S.meta.fields ? S.meta.fields : TERT_FIELDS)[k] || null;   // null: hidden
+  const cap = v => v.charAt(0).toUpperCase() + v.slice(1);
+  const low = v => v.charAt(0).toLowerCase() + v.slice(1);
+  function relabel() {
+    const t = T();
+    PAY_LABEL.student_token = cap(t.holder) + ' credit';
+    PAY_LABEL.replacement_pdf = cap(t.holder) + ' download';
+    ACTION_LABEL.claim_code_issued = `Created ${t.holder} claim code`;
+    ACTION_LABEL.claim_codes_required = `Required claim codes for the ${t.portal}`;
+    ACTION_LABEL.student_list_uploaded = `Uploaded ${t.list}`;
+    ACTION_LABEL.student_list_deleted = `Deleted ${t.list}`;
+    ACTION_LABEL.registered_check_on = `Required registered ${t.subjects}`;
+    ACTION_LABEL.registered_check_off = `Stopped requiring registered ${t.subjects}`;
+    ACTION_LABEL.sis_connection_saved = `Saved ${t.system_short} connection`;
+    ACTION_LABEL.sis_connection_removed = `Removed ${t.system_short} connection`;
+    ACTION_LABEL.sis_connection_tested = `Tested ${t.system_short} connection`;
+  }
   const badge = (cls, label) => `<span class="badge ${esc(cls)}">${esc(label)}</span>`;
 
   async function api(path, opts = {}) {
@@ -202,7 +230,7 @@
     { path: '/branding',  label: 'Branding', show: () => has('owner') },
     { path: '/signatories', label: 'Signatories', show: () => has('owner') },
     { path: '/security',  label: 'QR and portal security', show: () => has('owner') },
-    { path: '/students',  label: 'Student records', show: () => has('owner') },
+    { path: '/students',  label: 'Student records', words: () => T().records_title, show: () => has('owner') },
     { path: '/payouts',   label: 'Payments and payouts', show: () => has('owner') },
     { group: 'Help', show: () => !vendorOnly() },
     { path: '/support',   label: 'Support', show: () => !vendorOnly() },
@@ -210,7 +238,7 @@
   function renderNav(active) {
     $('nav').innerHTML = NAV.filter(i => i.show ? i.show() : !vendorOnly()).map(i => i.group
       ? `<div class="nav-group">${esc(i.group)}</div>`
-      : `<a href="#${i.path}" class="${active.startsWith(i.path) ? 'active' : ''}">${esc(i.label)}</a>`).join('');
+      : `<a href="#${i.path}" class="${active.startsWith(i.path) ? 'active' : ''}">${esc(i.words ? i.words() : i.label)}</a>`).join('');
   }
 
   // ── Views ───────────────────────────────────────────────────────────────
@@ -233,7 +261,7 @@
         <div class="card"><div class="k">Issued this month</div><div class="v">${esc(d.documents.issued_month)}</div></div>
         <div class="card"><div class="k">Verifications this month</div><div class="v">${esc(d.scans.month)}</div></div>
         <div class="card"><div class="k">Verifications today</div><div class="v">${esc(d.scans.today)}</div></div>
-        <div class="card"><div class="k">Paid by verifiers / graduate credits (month)</div><div class="v">${esc(d.scans.paid_month)} / ${esc(d.scans.token_month)}</div></div>
+        <div class="card"><div class="k">Paid by verifiers / ${esc(T().holder)} credits (month)</div><div class="v">${esc(d.scans.paid_month)} / ${esc(d.scans.token_month)}</div></div>
         <div class="card"><div class="k">Revoked / superseded</div><div class="v">${esc(d.documents.revoked)} / ${esc(d.documents.superseded)}</div></div>
       </div>
       <div class="panel"><h2>Recent verifications</h2>${scansTable(d.recent_scans)}
@@ -252,7 +280,7 @@
 
   function docsTable(rows) {
     if (!rows.length) return '<div class="empty">No documents match.</div>';
-    return `<div class="table-wrap"><table><thead><tr><th>Document ID</th><th>Holder</th><th>Matric</th><th>Type</th><th>Issued</th><th>Status</th><th>Scans</th></tr></thead><tbody>
+    return `<div class="table-wrap"><table><thead><tr><th>Document ID</th><th>Holder</th><th>${esc(T().id_short)}</th><th>Type</th><th>Issued</th><th>Status</th><th>Scans</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-doc="${esc(r.doc_id)}"><td class="mono">${esc(r.doc_id)}</td><td>${esc(r.issued_to)}</td>
         <td class="mono">${esc(r.matric_number || '')}</td><td>${esc(typeLabel(r.doc_type))}</td><td>${esc(fmtDate(r.issue_date))}</td>
         <td>${badge(r.status, STATUS_LABEL[r.status] || r.status)}</td><td>${r.scans != null ? esc(r.scans) : ''}</td></tr>`).join('')}
@@ -302,10 +330,13 @@
     const rows = [
       ['Document ID', `<span class="mono">${esc(doc.doc_id)}</span>`],
       ['Status', badge(doc.status, STATUS_LABEL[doc.status] || doc.status)],
-      ['Title', esc(doc.title)], ['Holder', esc(doc.issued_to)], ['Matric number', `<span class="mono">${esc(m.matric_number || '')}</span>`],
-      ['Type', esc(typeLabel(doc.doc_type))], ['Programme', esc(m.programme || '')], ['Faculty', esc(m.faculty || '')],
-      ['Department', esc(m.department || '')], ['Class of degree', esc(m.degree_class || '')],
-      ['Entry / graduation year', esc([m.entry_year, m.graduation_year].filter(Boolean).join(' / '))],
+      ['Title', esc(doc.title)], ['Holder', esc(doc.issued_to)], [T().id_label, `<span class="mono">${esc(m.matric_number || '')}</span>`],
+      ['Type', esc(typeLabel(doc.doc_type))],
+      ...(tertiary()
+        ? [['Programme', esc(m.programme || '')], ['Faculty', esc(m.faculty || '')],
+           ['Department', esc(m.department || '')], ['Class of degree', esc(m.degree_class || '')],
+           ['Entry / graduation year', esc([m.entry_year, m.graduation_year].filter(Boolean).join(' / '))]]
+        : Object.keys(TERT_FIELDS).filter(fieldLabel).map(k => [fieldLabel(k), esc(m[k] || '')])),
       ['Issued', esc(fmtDate(doc.issue_date))], ['Expires', esc(doc.expiry_date ? fmtDate(doc.expiry_date) : 'No expiry')],
       ['Issued by', esc(who(d.issued_by_user) || 'Legacy dashboard')],
     ].filter(([, v]) => v !== '');
@@ -326,7 +357,7 @@
     if (canIssue() && ['active', 'revoked'].includes(doc.status)) actions.push(`<a class="btn secondary" href="#/issue?reissue=${encodeURIComponent(doc.doc_id)}">Reissue / correct</a>`);
     if (canIssue() && doc.status === 'active') actions.push(`<button class="btn danger" id="revoke">Revoke</button>`);
     if (has('owner') && d.can_restore) actions.push(`<button class="btn secondary" id="restore">Restore</button>`);
-    if (canIssue() && doc.status === 'active' && m.matric_number) actions.push(`<button class="btn secondary" id="claim">Graduate claim code</button>`);
+    if (canIssue() && doc.status === 'active' && m.matric_number) actions.push(`<button class="btn secondary" id="claim">${esc(cap(T().holder))} claim code</button>`);
     if (canIssue() && doc.status === 'active') actions.push(`<button class="btn secondary" id="send-print">Send to printer</button>`);
 
     el.innerHTML = `
@@ -348,15 +379,15 @@
     $('copy-verify').onclick = () => copy(d.verify_url);
     if ($('send-print')) $('send-print').onclick = () => sendToPrinter({ doc_ids: [doc.doc_id] }, `${doc.issued_to}, ${typeLabel(doc.doc_type)}`);
     if ($('claim')) $('claim').onclick = () => modal({
-      title: 'Graduate claim code', submit: 'Create code',
-      lead: `${doc.issued_to} needs this code once, to open their graduate portal account for matric number ${m.matric_number}. It works for ${S.meta.claim_days || 90} days and only once. Creating a new code cancels any earlier one that hasn't been used.`,
+      title: `${cap(T().holder)} claim code`, submit: 'Create code',
+      lead: `${doc.issued_to} needs this code once, to open their ${T().portal} account for ${low(T().id_label)} ${m.matric_number}. It works for ${S.meta.claim_days || 90} days and only once. Creating a new code cancels any earlier one that hasn't been used.`,
       onSubmit: async () => {
         const r = await api(base.replace('/app-api', '') + '/claim-code', { method: 'POST' });
         modal({
           title: 'Claim code for ' + r.holder,
           html: `<div class="claim-code mono">${esc(r.code)}</div>
-            <p class="muted">Matric number <span class="mono">${esc(r.matric_number)}</span>. Use it at <span class="mono">${esc(r.portal_url)}</span> before ${esc(fmtDate(r.expires_at))}.</p>
-            <p class="muted">This is the only time the code is shown. Give it to the graduate directly (with the document, or by their own email or phone on your records), never to someone asking on their behalf.</p>
+            <p class="muted">${esc(T().id_label)} <span class="mono">${esc(r.matric_number)}</span>. Use it at <span class="mono">${esc(r.portal_url)}</span> before ${esc(fmtDate(r.expires_at))}.</p>
+            <p class="muted">This is the only time the code is shown. Give it to the ${esc(T().holder)} directly (with the document, or by their own email or phone on your records), never to someone asking on their behalf.</p>
             <div class="row" style="justify-content:flex-start"><button type="button" class="btn secondary" id="claim-copy">Copy code</button></div>`,
         });
         $('claim-copy').onclick = () => copy(r.code);
@@ -416,26 +447,30 @@
     }
     const input = (name, label, value, opts = {}) => `<div class="field${opts.full ? ' full' : ''}"><label for="i-${name}">${esc(label)}${opts.req ? ' *' : ''}</label>
       <input type="${opts.type || 'text'}" id="i-${name}" name="${name}" value="${esc(value || '')}" ${opts.attrs || ''}/>${opts.hint ? `<div class="hint">${esc(opts.hint)}</div>` : ''}</div>`;
+    // A record field: labelled for the sector, or kept as a hidden input when the sector doesn't use it
+    const slot = (name, value, opts = {}) => fieldLabel(name)
+      ? input(name, fieldLabel(name), value, opts)
+      : `<input type="hidden" id="i-${name}" name="${name}" value="${esc(value || '')}"/>`;
     el.innerHTML = `
       <div class="page-head"><div><h1>${reissueId ? 'Reissue / correct' : 'Issue document'}</h1>
         <div class="sub">${reissueId ? `Replaces <span class="mono">${esc(reissueId)}</span>. The old QR will tell verifiers to ask for the current copy.` : `Issued under ${esc(S.tenant.name)}, signed and QR-coded on save.`}</div></div></div>
       <div class="panel"><div class="alert" id="i-msg"></div>
       <form id="issue-form">
-        <div class="lookup-row"><div class="field" style="flex:1;min-width:200px;margin:0"><label for="i-matric_number">Matric number *</label>
+        <div class="lookup-row"><div class="field" style="flex:1;min-width:200px;margin:0"><label for="i-matric_number">${esc(T().id_label)} *</label>
           <input type="text" id="i-matric_number" name="matric_number" value="${esc(m.matric_number || '')}" style="text-transform:uppercase" autocomplete="off"/></div>
-          <button class="btn secondary" type="button" id="i-look">Look up student</button></div>
+          <button class="btn secondary" type="button" id="i-look">${esc(T().look_up)}</button></div>
         <div class="alert" id="i-rec"></div>
         <div class="form-grid">
         <div class="field"><label for="i-doc_type">Document type *</label><select id="i-doc_type" name="doc_type">
-          ${S.meta.doc_types.map(t => `<option value="${esc(t)}"${(pre.doc_type || 'Certificate') === t ? ' selected' : ''}>${esc(typeLabel(t))}</option>`).join('')}</select></div>
-        ${input('title', 'Document title', pre.title, { req: true, attrs: 'placeholder="e.g. Bachelor of Science in Computer Science"' })}
-        ${input('issued_to', 'Graduate full name', pre.issued_to, { req: true })}
-        ${input('programme', 'Programme / course', m.programme || m.course)}
-        ${input('degree_class', 'Class of degree', m.degree_class || m.class, { attrs: 'placeholder="e.g. Second Class Upper"' })}
-        ${input('faculty', 'Faculty', m.faculty)}
-        ${input('department', 'Department', m.department)}
-        ${input('entry_year', 'Entry year', m.entry_year, { attrs: 'inputmode="numeric" maxlength="4"' })}
-        ${input('graduation_year', 'Graduation year', m.graduation_year, { attrs: 'inputmode="numeric" maxlength="4"' })}
+          ${S.meta.doc_types.map(t => `<option value="${esc(t)}"${(pre.doc_type || S.meta.default_type || 'Certificate') === t ? ' selected' : ''}>${esc(typeLabel(t))}</option>`).join('')}</select></div>
+        ${input('title', 'Document title', pre.title, { req: true, attrs: tertiary() ? 'placeholder="e.g. Bachelor of Science in Computer Science"' : 'placeholder="e.g. ' + esc((S.meta.default_type || '') + ' ' + new Date().getFullYear()) + '"' })}
+        ${input('issued_to', T().name_label, pre.issued_to, { req: true })}
+        ${slot('programme', m.programme || m.course)}
+        ${slot('degree_class', m.degree_class || m.class, { attrs: tertiary() ? 'placeholder="e.g. Second Class Upper"' : '' })}
+        ${slot('faculty', m.faculty)}
+        ${slot('department', m.department)}
+        ${slot('entry_year', m.entry_year, { attrs: 'inputmode="numeric" maxlength="4"' })}
+        ${slot('graduation_year', m.graduation_year, { attrs: 'inputmode="numeric" maxlength="4"' })}
         ${input('expiry_date', 'Expiry date', pre.expiry_date ? String(pre.expiry_date).slice(0, 10) : '', { type: 'date', hint: 'Leave empty for certificates that never expire.' })}
         ${reissueId ? `<div class="field full"><label for="i-note">What was corrected? *</label><textarea id="i-note" name="note"></textarea></div>` : ''}
       </div>
@@ -444,7 +479,7 @@
         <a class="btn secondary" href="${reissueId ? '#/doc/' + encodeURIComponent(reissueId) : '#/documents'}">Cancel</a></div>
       </form></div>`;
     // Matric lookup: fill the form from the school's student records
-    const SOURCE = { sis: 'the student information system', list: 'the uploaded student list' };
+    const SOURCE = { sis: 'the ' + T().system, list: 'the uploaded ' + T().list };
     const FILL = { issued_to: 'full_name', programme: 'programme', degree_class: 'degree_class', faculty: 'faculty',
                    department: 'department', entry_year: 'entry_year', graduation_year: 'graduation_year' };
     let looked = '';
@@ -464,23 +499,23 @@
       try {
         const r = await api('/students/lookup?' + qs({ matric: mv, doc_type: $('i-doc_type').value }));
         if (looked !== mv) return;
-        const sisNote = r.sis_error ? ` The SIS couldn't be reached (${r.sis_error}).` : '';
+        const sisNote = r.sis_error ? ` The ${T().system_short} couldn't be reached (${r.sis_error}).` : '';
         if (!r.found) {
           box.className = 'alert show ' + (r.require_registered ? 'err' : 'warn');
           box.textContent = !r.has_records && !r.require_registered
-            ? 'No student records to check against yet. An Owner can connect the SIS or upload a student list under Student records.'
-            : `No student with matric number ${mv} in ${S.tenant.name}'s student records.${sisNote}` +
-              (r.require_registered ? ' Only registered students can be issued documents, so check the number.' : ' You can still issue, but check the details carefully.');
+            ? `No ${T().records} to check against yet. An Owner can connect the ${T().system_short} or upload a ${T().list} under ${T().records_title}.`
+            : `No ${T().subject} with ${low(T().id_label)} ${mv} in ${S.tenant.name}'s ${T().records}.${sisNote}` +
+              (r.require_registered ? ` Only registered ${T().subjects} can be issued documents, so check the number.` : ' You can still issue, but check the details carefully.');
           return;
         }
         const rec = r.record;
         // The record is the authority: a field it leaves out is cleared, not kept from an earlier student
         for (const [field, key] of Object.entries(FILL)) $('i-' + field).value = rec[key] || '';
-        lock(rec, SOURCE[r.source] || 'student records');
+        lock(rec, SOURCE[r.source] || T().records);
         const t = $('i-title');
-        if (!t.value && rec.programme && ['Certificate', 'Diploma'].includes($('i-doc_type').value)) t.value = rec.programme;
+        if (tertiary() && !t.value && rec.programme && ['Certificate', 'Diploma'].includes($('i-doc_type').value)) t.value = rec.programme;
         const status = rec.status ? rec.status.charAt(0).toUpperCase() + rec.status.slice(1) : 'not given';
-        const head = `Found in ${SOURCE[r.source] || 'student records'}: ${rec.full_name}, status ${status}. Greyed fields come from the record and can't be changed here.`;
+        const head = `Found in ${SOURCE[r.source] || T().records}: ${rec.full_name}, status ${status}. Greyed fields come from the record and can't be changed here.`;
         if (r.check.error) { box.className = 'alert show err'; box.textContent = `${head} ${r.check.error}`; }
         else if (r.check.warning) { box.className = 'alert show warn'; box.textContent = `${head} ${r.check.warning}`; }
         else { box.className = 'alert show ok'; box.textContent = head + sisNote; }
@@ -512,7 +547,7 @@
     el.innerHTML = `
       <div class="page-head"><div><h1>Search</h1><div class="sub">Staff only. Each search is recorded in the activity log.</div></div></div>
       <div class="panel"><form class="filters" id="s-form">
-        <div class="field" style="flex:1;min-width:220px"><label>Name, matric number or document ID</label><input type="search" name="q" value="${esc(term)}" minlength="3"/></div>
+        <div class="field" style="flex:1;min-width:220px"><label>Name, ${esc(low(T().id_label))} or document ID</label><input type="search" name="q" value="${esc(term)}" minlength="3"/></div>
         <button class="btn" type="submit">Search</button></form><div id="s-out"></div></div>`;
     $('s-form').onsubmit = e => { e.preventDefault(); go('/search', { q: new FormData(e.target).get('q') }); };
     if (term.length >= 3) {
@@ -738,7 +773,7 @@
         lead: 'Use a clear scan of the signature on white or transparent background. Every change is recorded in the activity log.',
         fields: [
           { name: 'full_name', label: 'Full name, as printed', hint: 'For example Dr. A. B. Adeyemi' },
-          { name: 'title', label: 'Title', value: slot === 1 ? 'Registrar' : 'Vice-Chancellor' },
+          { name: 'title', label: 'Title', value: ((S.meta.signatories || ['Registrar', 'Vice-Chancellor'])[slot - 1] || '') },
           { name: 'image', label: `Signature image (PNG or JPEG, up to ${kb} KB)`, type: 'file', accept: 'image/png,image/jpeg', maxKb: kb },
           { name: 'effective_from', label: 'Signs documents issued from', type: 'date', value: new Date().toISOString().slice(0, 10) },
           { name: 'effective_to', label: 'Until (optional)', type: 'date', hint: 'Leave empty if there is no end date yet.' },
@@ -780,7 +815,7 @@
     const naira = k => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { maximumFractionDigits: 2 });
     const BEARER = { account: 'Innovation Lens pays the Paystack charge', subaccount: `${S.tenant.name} pays the Paystack charge` };
     el.innerHTML = `
-      <div class="page-head"><div><h1>Payments and payouts</h1><div class="sub">Where verification fees and graduate credit purchases for ${esc(S.tenant.name)} settle</div></div></div>
+      <div class="page-head"><div><h1>Payments and payouts</h1><div class="sub">Where verification fees and ${esc(T().holder)} credit purchases for ${esc(S.tenant.name)} settle</div></div></div>
       <div class="panel"><h2>Payout account</h2>
         ${p && p.active ? `<dl class="kv">
             <dt>Status</dt><dd>${badge('active', 'Paying out')}</dd>
@@ -810,7 +845,7 @@
     const active = d.keys.find(k => k.status === 'active');
     const KEY_STATUS = { active: 'In use', retired: 'Retired, still checks older QRs', revoked: 'Revoked' };
     el.innerHTML = `
-      <div class="page-head"><div><h1>QR and portal security</h1><div class="sub">How ${esc(S.tenant.name)} QR codes are signed and who can open a graduate account</div></div></div>
+      <div class="page-head"><div><h1>QR and portal security</h1><div class="sub">How ${esc(S.tenant.name)} QR codes are signed and who can open a ${esc(T().holder)} account</div></div></div>
       <div class="panel"><h2>QR signing key</h2>
         <p class="muted">Every QR code carries a signature made with a key that belongs to ${esc(S.tenant.name)} alone. The signature covers the document ID, type, issue date and the holder's name, so a changed record or a made-up link fails the check. Nobody, including your staff, ever sees the key.</p>
         ${d.master === 'shared' ? '<div class="notice">Keys are currently protected by the platform\'s general secret. UniVerify will move them to a dedicated signing secret; rotate the key once that happens.</div>' : ''}
@@ -824,12 +859,12 @@
         ${d.older_documents ? `<div class="notice">${esc(d.older_documents)} active document${d.older_documents > 1 ? 's were' : ' was'} issued before key 1. Printed copies of ${d.older_documents > 1 ? 'those' : 'that one'} may carry the older QR, which strict checking refuses. Reissue or reprint them first.</div>` : '<div class="notice ok">Every active document was issued under a signing key, so strict checking is safe to turn on.</div>'}
         <p>Strict checking is <strong>${d.sig_strict ? 'on' : 'off'}</strong>.</p>
         <button class="btn${d.sig_strict ? ' secondary' : ''}" id="strict">${d.sig_strict ? 'Turn strict checking off' : 'Turn strict checking on'}</button></div>
-      <div class="panel"><h2>Graduate portal claim codes</h2>
-        <p class="muted">With claim codes required, a graduate can only open a portal account for a matric number with the one-off code you give them. Without it, anyone who knows a matric number could see that graduate's documents and who verified them.</p>
+      <div class="panel"><h2>${esc(cap(T().portal))} claim codes</h2>
+        <p class="muted">With claim codes required, a ${esc(T().holder)} can only open a portal account for a ${esc(low(T().id_label))} with the one-off code you give them. Without it, anyone who knows a ${esc(low(T().id_label))} could see that ${esc(T().holder)}'s documents and who verified them.</p>
         <p>Claim codes are <strong>${d.student_claim_required ? 'required' : 'not required'}</strong>.</p>
         <button class="btn${d.student_claim_required ? ' danger' : ''}" id="claims">${d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes'}</button></div>
       <div class="panel"><h2>What verifiers see</h2>
-        <p class="muted">After a verifier pays or the graduate uses a credit, the verify page always shows the document ID, ${esc(S.tenant.name)} as issuer, the document type, issue date and status. Choose what else it shows. Less is safer for graduates; more saves verifiers a phone call.</p>
+        <p class="muted">After a verifier pays or the ${esc(T().holder)} uses a credit, the verify page always shows the document ID, ${esc(S.tenant.name)} as issuer, the document type, issue date and status. Choose what else it shows. Less is safer for ${esc(T().holders)}; more saves verifiers a phone call.</p>
         <form id="dis-f"><div class="checks">${Object.entries(dis.fields).map(([k, f]) => `<label><input type="checkbox" name="${esc(k)}"${dis.disclosure[k] ? ' checked' : ''}/> <span>${esc(f.label)}</span></label>`).join('')}</div>
         <button class="btn" type="submit" style="margin-top:12px">Save</button></form></div>`;
     $('dis-f').onsubmit = async e => {
@@ -855,7 +890,7 @@
       title: d.student_claim_required ? 'Stop requiring claim codes' : 'Require claim codes',
       submit: d.student_claim_required ? 'Stop requiring' : 'Require', danger: d.student_claim_required,
       lead: d.student_claim_required
-        ? 'Anyone who knows a matric number will be able to open a portal account for it and see that graduate\'s documents. Only do this for a demonstration.'
+        ? `Anyone who knows a ${low(T().id_label)} will be able to open a portal account for it and see that ${T().holder}'s documents. Only do this for a demonstration.`
         : 'New accounts need a claim code. Existing accounts that never used one must enter a code before they see documents again.',
       onSubmit: () => save({ student_claim_required: !d.student_claim_required }, 'Saved.'),
     });
@@ -863,25 +898,30 @@
 
   // ── Student records: SIS connection and uploaded lists ─────────────────
   V['/students'] = async (el) => {
-    if (!has('owner')) { el.innerHTML = '<div class="panel empty">Only an Owner can manage student records.</div>'; return; }
+    if (!has('owner')) { el.innerHTML = `<div class="panel empty">Only an Owner can manage ${esc(T().records)}.</div>`; return; }
     const d = await api('/students');
+    const t = T(), idl = low(t.id_label), sys = t.system_short;
+    // Which awards need a finished status, in this sector's words
+    const awardRule = tertiary()
+      ? 'Awards (certificates, diplomas, completion) always need status Graduated or Completed when the record gives a status. Transcripts and other records of study can be issued at any stage of study.'
+      : `Awards always need status ${S.meta.finished_label || 'Active'} when the record gives a status. Other documents can be issued at any status.`;
     const sis = d.sis;
     const AUTH = { bearer: 'API token (Bearer)', basic: 'Username and password (Basic)', none: 'None (testing only)' };
     const sisState = !sis.configured ? 'Not connected.'
       : `${sis.enabled ? 'Switched on' : 'Saved but switched off'}.` +
         (sis.last_ok_at ? ` Last answered ${fmtTime(sis.last_ok_at)}.` : ' Not reached yet.');
     el.innerHTML = `
-      <div class="page-head"><div><h1>Student records</h1><div class="sub">Who ${esc(S.tenant.name)} can issue documents to, and the details printed on them</div></div></div>
-      <div class="panel"><h2>Registered students only</h2>
-        <p class="muted">When issuing, staff type a matric number and the form fills from your student records. With this on, a document can only be issued to a matric number found there, with the same name. Awards (certificates, diplomas, completion) always need status Graduated or Completed when the record gives a status. Transcripts and other records of study can be issued at any stage of study.</p>
-        <p>Registered students only is <strong>${d.require_registered ? 'on' : 'off'}</strong>.</p>
+      <div class="page-head"><div><h1>${esc(t.records_title)}</h1><div class="sub">Who ${esc(S.tenant.name)} can issue documents to, and the details printed on them</div></div></div>
+      <div class="panel"><h2>Registered ${esc(t.subjects)} only</h2>
+        <p class="muted">When issuing, staff type a ${esc(idl)} and the form fills from your ${esc(t.records)}. With this on, a document can only be issued to a ${esc(idl)} found there, with the same name. ${esc(awardRule)}</p>
+        <p>Registered ${esc(t.subjects)} only is <strong>${d.require_registered ? 'on' : 'off'}</strong>.</p>
         <button class="btn${d.require_registered ? ' secondary' : ''}" id="st-req">${d.require_registered ? 'Turn off' : 'Turn on'}</button></div>
-      <div class="panel"><h2>Student information system (SIS)</h2>
-        <p class="muted">Looked up live, one matric number at a time, whenever staff issue. Nothing is copied or stored from it. Your SIS team implements the UniVerify SIS API (one read-only address that returns a student by matric number).</p>
+      <div class="panel"><h2>${esc(cap(t.system))}${tertiary() ? ' (SIS)' : ''}</h2>
+        <p class="muted">Looked up live, one ${esc(idl)} at a time, whenever staff issue. Nothing is copied or stored from it. Your ${esc(sys)} team implements the UniVerify ${tertiary() ? 'SIS' : 'records'} API (one read-only address that returns a ${esc(t.subject)} by ${esc(idl)}).</p>
         <div class="notice${sis.last_error ? ' bad' : sis.enabled ? ' ok' : ''}">${esc(sisState)}${sis.last_error ? ' Last error: ' + esc(sis.last_error) : ''}</div>
         <form id="sis-f"><div class="form-grid">
-          <div class="field full"><label for="sis-url">SIS address</label><input type="text" id="sis-url" name="base_url" value="${esc(sis.base_url || '')}" placeholder="https://sis.example.edu.ng/univerify"/>
-            <div class="hint">UniVerify calls this address followed by /students/ and the matric number.</div></div>
+          <div class="field full"><label for="sis-url">${esc(cap(sys))} address</label><input type="text" id="sis-url" name="base_url" value="${esc(sis.base_url || '')}" placeholder="${tertiary() ? 'https://sis.example.edu.ng/univerify' : 'https://records.example.org/univerify'}"/>
+            <div class="hint">UniVerify calls this address followed by /students/ and the ${esc(idl)}.</div></div>
           <div class="field"><label for="sis-auth">Sign-in</label><select id="sis-auth" name="auth_type">
             ${Object.entries(AUTH).map(([k, v]) => `<option value="${k}"${(sis.auth_type || 'bearer') === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
           <div class="field"><label for="sis-secret">Token or username:password</label><input id="sis-secret" name="secret" type="password" autocomplete="new-password"
@@ -890,11 +930,11 @@
           <div class="field"><label>&nbsp;</label><label style="font-weight:400"><input type="checkbox" name="enabled"${sis.enabled || !sis.configured ? ' checked' : ''}/> Use it when issuing</label></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Save connection</button>
-          ${sis.configured ? '<button class="btn secondary" type="button" id="sis-test">Test with a matric number</button><button class="btn danger" type="button" id="sis-del">Remove</button>' : ''}</div>
+          ${sis.configured ? `<button class="btn secondary" type="button" id="sis-test">Test with a ${esc(idl)}</button><button class="btn danger" type="button" id="sis-del">Remove</button>` : ''}</div>
         </form></div>
-      <div class="panel"><h2>Uploaded student lists</h2>
-        <p class="muted">For students the SIS doesn't answer for, or before it's connected: the convocation list, or this month's transcript requests. Only the details printed on documents and the student's status are kept. Each record is deleted 30 days after its first document is issued, and after 180 days at most.</p>
-        <p>${esc(d.records.total)} student record${d.records.total === 1 ? '' : 's'} held, ${esc(d.records.waiting)} not yet issued.</p>
+      <div class="panel"><h2>Uploaded ${esc(t.list)}s</h2>
+        <p class="muted">${tertiary() ? "For students the SIS doesn't answer for, or before it's connected: the convocation list, or this month's transcript requests." : `For ${esc(t.subjects)} the ${esc(sys)} doesn't answer for, or before it's connected.`} Only the details printed on documents and the ${esc(t.subject)}'s status are kept. Each record is deleted 30 days after its first document is issued, and after 180 days at most.</p>
+        <p>${esc(d.records.total)} ${esc(t.subject)} record${d.records.total === 1 ? '' : 's'} held, ${esc(d.records.waiting)} not yet issued.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn" id="st-up">Upload list</button>
           <a class="btn secondary" href="/app-api/students/template.csv">Download template</a></div>
         ${d.lists.length ? `<div class="table-wrap"><table><thead><tr><th>File</th><th>Rows</th><th>Still held</th><th>Issued</th><th>Uploaded</th><th></th></tr></thead><tbody>
@@ -904,11 +944,11 @@
         </tbody></table></div>` : '<div class="empty">No lists uploaded.</div>'}</div>`;
 
     $('st-req').onclick = () => modal({
-      title: d.require_registered ? 'Stop requiring registered students' : 'Require registered students',
+      title: d.require_registered ? `Stop requiring registered ${t.subjects}` : `Require registered ${t.subjects}`,
       submit: d.require_registered ? 'Turn off' : 'Turn on', danger: d.require_registered,
       lead: d.require_registered
-        ? 'Staff will be able to issue to matric numbers that aren\'t in your student records. They still see a warning.'
-        : 'Documents can only be issued to matric numbers found in the SIS or an uploaded list, with a matching name. Check the SIS answers or a list is uploaded first.',
+        ? `Staff will be able to issue to ${idl}s that aren't in your ${t.records}. They still see a warning.`
+        : `Documents can only be issued to ${idl}s found in the ${sys} or an uploaded list, with a matching name. Check the ${sys} answers or a list is uploaded first.`,
       onSubmit: async () => { await api('/students/settings', { method: 'PATCH', body: { require_registered: !d.require_registered } }); toast('Saved.'); render(); },
     });
     $('sis-f').onsubmit = async e => {
@@ -917,46 +957,46 @@
       try {
         await api('/students/sis', { method: 'PUT', body: { base_url: f.base_url.value.trim(), auth_type: f.auth_type.value,
           secret: f.secret.value, timeout_ms: (parseInt(f.timeout.value) || 5) * 1000, enabled: f.enabled.checked } });
-        toast('SIS connection saved.'); render();
+        toast(`${sys} connection saved.`); render();
       } catch (err) { toast(err.message); }
     };
     if ($('sis-test')) $('sis-test').onclick = () => modal({
-      title: 'Test the SIS connection', submit: 'Test',
-      lead: 'UniVerify asks the SIS for one student, exactly as it does when issuing. Nothing is issued or stored.',
-      fields: [{ name: 'matric', label: 'Matric number' }],
+      title: `Test the ${sys} connection`, submit: 'Test',
+      lead: `UniVerify asks the ${sys} for one ${t.subject}, exactly as it does when issuing. Nothing is issued or stored.`,
+      fields: [{ name: 'matric', label: t.id_label }],
       onSubmit: async v => {
         const r = await api('/students/sis/test', { method: 'POST', body: { matric: v.matric } });
         const a = $('m-msg');
-        if (!r.ok) { a.className = 'alert show err'; a.textContent = 'The SIS did not give a usable answer: ' + r.error; }
-        else if (!r.found) { a.className = 'alert show warn'; a.textContent = 'Connected. The SIS says it has no student with that matric number.'; }
+        if (!r.ok) { a.className = 'alert show err'; a.textContent = `The ${sys} did not give a usable answer: ` + r.error; }
+        else if (!r.found) { a.className = 'alert show warn'; a.textContent = `Connected. The ${sys} says it has no ${t.subject} with that ${idl}.`; }
         else {
           const x = r.record;
           a.className = 'alert show ok';
-          a.textContent = `Connected. ${x.full_name}, ${x.programme || 'no programme given'}, status ${x.status || 'not given'}.`;
+          a.textContent = `Connected. ${x.full_name}, ${x.programme || 'no ' + low(fieldLabel('programme') || 'programme').replace(' / course', '') + ' given'}, status ${x.status || 'not given'}.`;
         }
         return true;
       },
     });
     if ($('sis-del')) $('sis-del').onclick = () => modal({
-      title: 'Remove the SIS connection', submit: 'Remove', danger: true,
+      title: `Remove the ${sys} connection`, submit: 'Remove', danger: true,
       lead: 'Lookups will use uploaded lists only. The saved token is deleted.',
-      onSubmit: async () => { await api('/students/sis', { method: 'DELETE' }); toast('SIS connection removed.'); render(); },
+      onSubmit: async () => { await api('/students/sis', { method: 'DELETE' }); toast(`${sys} connection removed.`); render(); },
     });
     $('st-up').onclick = () => modal({
-      title: 'Upload student list', submit: 'Upload',
-      lead: 'One row per student. A student already held from an earlier list is replaced by this one.',
+      title: `Upload ${t.list}`, submit: 'Upload',
+      lead: `One row per ${t.subject}. A ${t.subject} already held from an earlier list is replaced by this one.`,
       fields: [{ name: 'csv', label: 'CSV file', type: 'file', accept: '.csv,text/csv', asText: true, maxKb: 1500,
-                 hint: 'Required columns: matric_number, full_name. Add status so awards can be checked. In Excel use File, Save As, CSV UTF-8.' }],
+                 hint: `Required columns: ${tertiary() ? 'matric_number' : idl.replace(/[^a-z0-9]+/g, '_')}, full_name. Add status so awards can be checked. In Excel use File, Save As, CSV UTF-8.` }],
       onSubmit: async v => {
         if (!v.csv) throw new Error('Choose a CSV file.');
         const r = await api('/students/lists', { method: 'POST', body: { csv: v.csv, file_name: v.csv_name } });
-        toast(`${r.added} student${r.added === 1 ? '' : 's'} added${r.skipped_count ? `, ${r.skipped_count} row${r.skipped_count === 1 ? '' : 's'} skipped (first: row ${r.skipped[0].row}, ${r.skipped[0].error})` : ''}.`);
+        toast(`${r.added} ${t.subject}${r.added === 1 ? '' : 's'} added${r.skipped_count ? `, ${r.skipped_count} row${r.skipped_count === 1 ? '' : 's'} skipped (first: row ${r.skipped[0].row}, ${r.skipped[0].error})` : ''}.`);
         render();
       },
     });
     el.querySelectorAll('[data-del-list]').forEach(b => b.onclick = () => modal({
-      title: 'Delete student list', submit: 'Delete', danger: true,
-      lead: `Deletes ${b.dataset.name} and every student record that came from it. Documents already issued are not affected.`,
+      title: `Delete ${t.list}`, submit: 'Delete', danger: true,
+      lead: `Deletes ${b.dataset.name} and every ${t.subject} record that came from it. Documents already issued are not affected.`,
       onSubmit: async () => { await api('/students/lists/' + encodeURIComponent(b.dataset.delList), { method: 'DELETE' }); toast('List deleted.'); render(); },
     }));
   };
@@ -1008,7 +1048,7 @@
     };
     const jobsTable = j.jobs.length ? `<div class="table-wrap"><table><thead><tr><th>Job</th><th>Type</th><th>Documents</th>${vendor ? '' : '<th>Vendor</th>'}<th>Status</th><th>Downloads</th><th>Pack until</th><th></th></tr></thead><tbody>
       ${j.jobs.map(jobRow).join('')}</tbody></table></div>`
-      : `<div class="empty">${vendor ? 'No jobs for you yet. The school sends each job to you when it\'s ready to print.' : 'No print jobs yet. Send an issued batch below, or a single document from its page.'}</div>`;
+      : `<div class="empty">${vendor ? `No jobs for you yet. The ${esc(T().org)} sends each job to you when it's ready to print.` : 'No print jobs yet. Send an issued batch below, or a single document from its page.'}</div>`;
     el.innerHTML = `
       <div class="page-head"><div><h1>Print jobs</h1><div class="sub">${vendor ? `Jobs ${esc(S.tenant.name)} has sent you` : 'QR codes for documents printed by an outside printer'}</div></div></div>
       ${vendor ? `<div class="notice">Each pack holds one QR per document (SVG and 600 dpi PNG), a manifest that says which QR goes on whose document, and the placement spec. You can download a pack ${esc(j.max_downloads)} times. Keep holograms and lamination off the QR, scan a sample before dispatch, mark the job printed, and delete the pack once it's delivered.</div>` : ''}
@@ -1030,7 +1070,7 @@
     // The count changes on the server; refresh so the row shows it
     el.querySelectorAll('[data-dl]').forEach(a => a.addEventListener('click', () => setTimeout(render, 1500)));
     const MOVE = {
-      printed: { title: 'Mark printed', submit: 'Mark printed', lead: 'Tells the school the job is printed. The pack locks for you; ask the school to reissue it if you need to reprint.' },
+      printed: { title: 'Mark printed', submit: 'Mark printed', lead: `Tells the ${T().org} the job is printed. The pack locks for you; ask the ${T().org} to reissue it if you need to reprint.` },
       delivered: { title: 'Confirm delivered', submit: 'Confirm delivered', lead: 'Locks the pack for the printer. Do this once the printed documents are in your hands.' },
       reissue: { title: 'Reissue pack', submit: 'Reissue', lead: 'Lets the printer download the pack again: the count goes back to 0 and the 30 days start again. Use it for a reprint or a lost file.', reason: true },
       cancel: { title: 'Cancel job', submit: 'Cancel job', danger: true, lead: 'The printer loses access to this job straight away. The documents stay valid.', reason: true },
@@ -1066,7 +1106,7 @@
     el.innerHTML = `
       <div class="page-head"><div><h1>Scan alerts</h1><div class="sub">Scan patterns that may mean a copied or forged QR</div></div>
         <div class="actions"><a class="btn ghost" href="#/alerts${all ? '' : '?status=all'}">${all ? 'Show open alerts only' : 'Show handled alerts too'}</a></div></div>
-      <div class="notice">An alert is not proof of fraud. A graduate applying to many employers in one day can trigger one too. Check the document's verification log, contact the graduate if needed, and revoke or reissue if the QR has been copied.</div>
+      <div class="notice">An alert is not proof of fraud. A ${esc(T().holder)} applying to many employers in one day can trigger one too. Check the document's verification log, contact the ${esc(T().holder)} if needed, and revoke or reissue if the QR has been copied.</div>
       <div class="panel">${d.alerts.length ? `<div class="table-wrap"><table><thead><tr><th>Raised</th><th>Document</th><th>Holder</th><th>Alert</th><th>Detail</th><th>Status</th><th></th></tr></thead><tbody>
         ${d.alerts.map(a => `<tr><td>${esc(fmtTime(a.created_at))}</td><td class="mono"><a href="#/doc/${encodeURIComponent(a.doc_id)}">${esc(a.doc_id)}</a></td>
           <td>${esc(a.issued_to || '')}</td><td>${badge(a.kind === 'tampered' ? 'tampered' : 'superseded', ALERT_LABEL[a.kind] || a.kind)}</td>
@@ -1092,7 +1132,7 @@
     const d = await api('/batches?page=' + page);
     const appr = d.approval_required;
     el.innerHTML = `
-      <div class="page-head"><div><h1>Bulk issue</h1><div class="sub">Issue a whole class list from one CSV file, up to ${esc(d.max_rows)} rows at a time</div></div>
+      <div class="page-head"><div><h1>Bulk issue</h1><div class="sub">Issue ${tertiary() ? 'a whole class list' : 'for many ' + esc(T().holders) + ' at once'} from one CSV file, up to ${esc(d.max_rows)} rows at a time</div></div>
         <div class="actions"><a class="btn secondary" href="/app-api/batches/template.csv">Download template</a>
         ${canIssue() ? '<button class="btn" id="b-up">Upload CSV</button>' : ''}</div></div>
       <div class="panel"><div class="slot-head"><div><h2>Approval before issue: ${appr ? 'On' : 'Off'}</h2>
@@ -1106,7 +1146,7 @@
           <td>${b.status === 'issued' ? `${esc(b.issued_count)} issued` : `${esc(b.valid_count)} ready`}${b.error_count ? ` · <span class="bad-text">${esc(b.error_count)} with errors</span>` : ''}</td>
           <td>${badge('b-' + b.status, BATCH_LABEL[b.status])}</td><td>${esc(b.created_by_name || b.created_by_email || '')}</td></tr>`).join('')}
         </tbody></table></div>${pager(d.page, d.limit, d.total, p => go('/batches', { page: p }))}`
-        : '<p class="muted">No uploads yet. Download the template, fill one row per graduate, save it as CSV, then upload it here. Nothing is issued until you check the rows and confirm.</p>'}</div>`;
+        : `<p class="muted">No uploads yet. Download the template, fill one row per ${esc(T().holder)}, save it as CSV, then upload it here. Nothing is issued until you check the rows and confirm.</p>`}</div>`;
     el.querySelectorAll('tr[data-batch]').forEach(tr => tr.onclick = () => go('/batch/' + tr.dataset.batch));
     if ($('b-up')) $('b-up').onclick = () => modal({
       title: 'Upload CSV', submit: 'Check file',
@@ -1115,7 +1155,7 @@
         { name: 'doc_type', label: 'Document type for every row', type: 'select', value: 'Certificate',
           options: d.doc_types.map(t => ({ value: t, label: typeLabel(t) })) },
         { name: 'csv', label: 'CSV file', type: 'file', accept: '.csv,text/csv', asText: true, maxKb: 1500,
-          hint: 'Required columns: full_name, matric_number, title. In Excel use File, Save As, CSV UTF-8.' },
+          hint: `Required columns: full_name, ${tertiary() ? 'matric_number' : low(T().id_label).replace(/[^a-z0-9]+/g, '_')}, title. In Excel use File, Save As, CSV UTF-8.` },
       ],
       onSubmit: async v => {
         if (!v.csv) throw new Error('Choose a CSV file.');
@@ -1152,7 +1192,7 @@
     if (['draft', 'pending_approval'].includes(b.status) && canIssue() && (b.created_by === S.user.id || has('owner')))
       actions.push('<button class="btn secondary" id="bt-cancel">Cancel batch</button>');
     if (b.status === 'issued' && canIssue()) actions.push(`<a class="btn" href="${base}/pdfs.zip">Download all PDFs (zip)</a>`);
-    if (b.status === 'issued' && canIssue()) actions.push('<button class="btn secondary" id="bt-claims">Graduate claim codes (CSV)</button>');
+    if (b.status === 'issued' && canIssue()) actions.push(`<button class="btn secondary" id="bt-claims">${esc(cap(T().holder))} claim codes (CSV)</button>`);
     if (b.status === 'issued' && canIssue()) actions.push('<button class="btn secondary" id="bt-print">Send to printer</button>');
     if (b.error_count) actions.push(`<a class="btn secondary" href="${base}/errors.csv">Rows to fix (CSV)</a>`);
 
@@ -1167,8 +1207,8 @@
 
     const wireClaims = () => { if ($('bt-print')) $('bt-print').onclick = () => sendToPrinter({ batch_id: b.id }, `${b.file_name}, ${b.issued_count} documents`);
       if ($('bt-claims')) $('bt-claims').onclick = () => modal({
-      title: 'Graduate claim codes', submit: 'Create codes',
-      lead: 'Makes a fresh claim code for every graduate in this batch and downloads them as a CSV, so you can send each graduate their own code. Any earlier code for these graduates that hasn\'t been used stops working. Keep the file safe and delete it once the codes are sent.',
+      title: `${cap(T().holder)} claim codes`, submit: 'Create codes',
+      lead: `Makes a fresh claim code for every ${T().holder} in this batch and downloads them as a CSV, so you can send each ${T().holder} their own code. Any earlier code for these ${T().holders} that hasn't been used stops working. Keep the file safe and delete it once the codes are sent.`,
       onSubmit: async () => {
         const r = await fetch(base + '/claim-codes.csv', { method: 'POST', credentials: 'same-origin' });
         if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || 'Failed to create claim codes.'); }
@@ -1192,7 +1232,7 @@
       ${actions.length ? `<div class="panel"><div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div></div>` : ''}
       <div class="panel"><div class="slot-head"><h2>Rows</h2>
         <a class="btn ghost sm" href="#/batch/${esc(b.id)}${onlyProblems ? '' : '?show=problems'}">${onlyProblems ? 'Show all rows' : 'Show only rows with problems'}</a></div>
-        <div class="table-wrap"><table><thead><tr><th>Row</th><th>Full name</th><th>Matric number</th><th>Title</th><th>Class</th><th>Result</th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>Row</th><th>Full name</th><th>${esc(T().id_label)}</th><th>Title</th><th>${esc(tertiary() ? 'Class' : (fieldLabel('degree_class') || ''))}</th><th>Result</th></tr></thead><tbody>
         ${rows.map(r => `<tr><td>${esc(r.row_no)}</td><td>${esc(r.data.full_name || '')}</td><td class="mono">${esc(r.data.matric_number || '')}</td>
           <td>${esc(r.data.title || '')}</td><td>${esc(r.data.degree_class || '')}</td>
           <td>${r.doc_id ? `<a class="mono" href="#/doc/${encodeURIComponent(r.doc_id)}">${esc(r.doc_id)}</a>`
@@ -1239,9 +1279,9 @@
   V['/support'] = async (el) => {
     const d = await api('/support');
     el.innerHTML = `
-      <div class="page-head"><div><h1>Support</h1><div class="sub">Ask the UniVerify team for help. Everyone on your staff can see and follow your school's tickets.</div></div>
+      <div class="page-head"><div><h1>Support</h1><div class="sub">Ask the UniVerify team for help. Everyone on your staff can see and follow your ${esc(T().org)}'s tickets.</div></div>
         <div class="actions"><button class="btn" id="t-new">New ticket</button></div></div>
-      <div class="notice">Don't put passwords, authenticator codes or students' personal details in a ticket. A document ID or matric number is enough for us to find a record.</div>
+      <div class="notice">Don't put passwords, authenticator codes or ${esc(T().subjects)}' personal details in a ticket. A document ID or ${esc(low(T().id_label))} is enough for us to find a record.</div>
       <div class="panel">${d.tickets.length ? `<div class="table-wrap"><table><thead><tr><th>#</th><th>Subject</th><th>Category</th><th>Opened by</th><th>Status</th><th>Updated</th></tr></thead><tbody>
         ${d.tickets.map(t => `<tr class="click" data-ticket="${esc(t.id)}"><td class="mono">${esc(t.ticket_no)}</td>
           <td>${esc(t.subject)}${t.priority === 'urgent' ? ' ' + badge('revoked', 'Urgent') : ''}</td><td>${esc(CAT_LABEL[t.category] || t.category)}</td>
@@ -1316,6 +1356,8 @@
       const me = await api('/auth/me');
       S.user = me.user; S.tenant = me.tenant;
       S.meta = await api('/meta');
+      relabel();
+      $('top-q').placeholder = `Search name, ${low(T().id_label)} or document ID`;
     } catch (e) { return; }
     const root = document.documentElement.style;
     if (S.tenant.primary_colour) root.setProperty('--brand', S.tenant.primary_colour);

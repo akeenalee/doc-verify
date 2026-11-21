@@ -408,7 +408,7 @@
           +   (t.contact_email ? '<div style="font-size:11px;color:#8AADCC;margin-top:2px">' + esc(t.contact_email) + '</div>' : '') + '</td>'
           + '<td><a href="' + esc(t.url) + '" target="_blank" rel="noopener" style="color:#8AADCC">' + esc(t.subdomain) + '</a></td>'
           + '<td>' + esc(t.short_code) + '</td>'
-          + '<td style="font-size:12px">' + esc(t.institution_type) + '</td>'
+          + '<td style="font-size:12px">' + esc(t.sector && t.sector !== 'tertiary' ? t.sector.replace(/_/g, ' ') : t.institution_type) + '</td>'
           + '<td>' + esc(String(t.documents || 0)) + '</td>'
           + '<td>' + status + '</td>'
           + '<td style="font-size:12px;color:#8AADCC">' + esc(fmtDate(t.created_at)) + '</td>'

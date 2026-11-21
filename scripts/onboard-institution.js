@@ -3,6 +3,12 @@
 // Interactive script to onboard a new institution onto the UniVerify platform
 
 require('dotenv').config();
+// Schools only. Other sectors are onboarded from the admin panel, which picks
+// the sector and its document types.
+if (require('../src/deployment').MODE !== 'tertiary') {
+  console.error('This script onboards universities, polytechnics and colleges only. Use Onboard institution in /admin.');
+  process.exit(1);
+}
 const pool     = require('../src/db/pool');
 const readline = require('readline');
 

@@ -23,7 +23,8 @@ const { issueClaimCode } = require('../utils/claims');
 const { activeKey } = require('../utils/signing');
 const { generatePDF } = require('../utils/pdfGenerator');
 const { loadBrand } = require('../utils/branding');
-const { DOC_TYPES, documentInput } = require('./staffApp');
+const { documentInput } = require('./staffApp');
+const { TERTIARY, sectorColumns } = require('../utils/docTemplates');
 const SR = require('../utils/studentRecords');
 
 const ANY      = requireStaff();
@@ -77,34 +78,44 @@ async function loadBatch(tenantId, id, client = pool, lock = false) {
 }
 
 // ── Parsing and validation ──────────────────────────────────────────────────
-function mapHeaders(header) {
+// Template headings: the sector's own names, hidden fields left out
+function templateHeaders(kit) {
+  const own = sectorColumns(kit);
+  return TEMPLATE_HEADERS
+    .filter(h => !(h in kit.pack.fields) || kit.pack.fields[h])
+    .map(h => own[h] ? own[h][0] : h);
+}
+
+function mapHeaders(header, kit) {
   const index = {}, unknown = [];
+  const own = sectorColumns(kit);
   header.forEach((h, i) => {
     const n = norm(h);
-    const key = Object.keys(COLUMNS).find(k => COLUMNS[k].includes(n));
+    const key = Object.keys(COLUMNS).find(k => COLUMNS[k].includes(n) || (own[k] || []).includes(n));
     if (key && index[key] === undefined) index[key] = i;
     else if (n) unknown.push(String(h).trim());
   });
   return { index, unknown };
 }
 
-async function validateRows(tenant, docType, records) {
+async function validateRows(tenant, docType, records, kit = TERTIARY) {
+  const terms = kit.terms, slotLabel = k => kit.pack.fields[k] || k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
   // records: [{ row_no, data }]
   const seen = new Map();
   const out = records.map(({ row_no, data }) => {
     const errors = [], warnings = [];
-    const input = documentInput({ ...data, doc_type: docType, issued_to: data.full_name }, tenant);
-    if (input.errors) errors.push(...input.errors.map(e => e.replace('Graduate name', 'Full name')));
+    const input = documentInput({ ...data, doc_type: docType, issued_to: data.full_name }, tenant, kit, 'Full name');
+    if (input.errors) errors.push(...input.errors);
     // A cell starting with a formula character is a spreadsheet artefact, not a name or title
-    for (const [k, label] of [['full_name', 'Full name'], ['title', 'Title'], ['programme', 'Programme']])
+    for (const [k, label] of [['full_name', 'Full name'], ['title', 'Title'], ['programme', kit.sector === 'tertiary' ? 'Programme' : slotLabel('programme')]])
       if (/^[=+@]/.test(data[k] || '')) errors.push(`${label} starts with "${data[k][0]}", which looks like a spreadsheet formula.`);
     for (const k of ['graduation_year', 'entry_year'])
-      if (data[k] && !/^\d{4}$/.test(data[k])) errors.push(`${k === 'graduation_year' ? 'Graduation' : 'Entry'} year must be four digits.`);
+      if (data[k] && !/^\d{4}$/.test(data[k])) errors.push(`${slotLabel(k)} must be four digits.`);
     if (data.graduation_year && data.entry_year && /^\d{4}$/.test(data.graduation_year) && /^\d{4}$/.test(data.entry_year)
-        && Number(data.graduation_year) < Number(data.entry_year)) errors.push('Graduation year is before entry year.');
+        && Number(data.graduation_year) < Number(data.entry_year)) errors.push(`${slotLabel('graduation_year')} is before ${slotLabel('entry_year').toLowerCase()}.`);
     const matric = clean(data.matric_number, 50).toUpperCase();
     if (matric) {
-      if (seen.has(matric)) errors.push(`Same matric number as row ${seen.get(matric)}.`);
+      if (seen.has(matric)) errors.push(`Same ${terms.id_label.toLowerCase()} as row ${seen.get(matric)}.`);
       else seen.set(matric, row_no);
     }
     return { row_no, data, errors, warnings, matric };
@@ -131,13 +142,13 @@ async function validateRows(tenant, docType, records) {
     for (const row of out) {
       if (!row.matric || row.errors.length) continue;
       const lk = found.get(SR.normMatric(row.matric));
-      const v = SR.assess(lk, docType, row.data.full_name, required);
+      const v = SR.assess(lk, docType, row.data.full_name, required, kit);
       row.errors.push(...v.errors);
       row.warnings.push(...v.warnings);
       if (lk && lk.found && !v.errors.length) {
         // The record is the authority: its details replace the file's
         const replaced = SR.lockRecord(row.data, lk.record);
-        if (replaced.length) row.warnings.push(`Taken from student records instead of the file: ${replaced.map(f => f.replace(/_/g, ' ')).join(', ')}.`);
+        if (replaced.length) row.warnings.push(`Taken from ${terms.records} instead of the file: ${replaced.map(f => f.replace(/_/g, ' ')).join(', ')}.`);
         row.data.record_source = lk.source;
       }
     }
@@ -154,7 +165,7 @@ async function issueBatch(client, req, batch) {
   const tenant = req.tenant;
   const prepared = [];
   for (const r of rows) {
-    const input = documentInput({ ...r.data, doc_type: batch.doc_type, issued_to: r.data.full_name }, tenant);
+    const input = documentInput({ ...r.data, doc_type: batch.doc_type, issued_to: r.data.full_name }, tenant, req.kit, 'Full name');
     if (input.errors) throw bad(409, `Row ${r.row_no} no longer passes validation. Upload the file again.`);
     prepared.push({ row_no: r.row_no, ...input.values });
   }
@@ -208,6 +219,11 @@ async function issueBatch(client, req, batch) {
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 router.get('/template.csv', ANY, (req, res) => {
+  if (req.kit.sector !== 'tertiary') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="univerify-bulk-template.csv"');
+    return res.send('\ufeff' + toCsv([templateHeaders(req.kit)]));
+  }
   const sample = ['Amina Bello', 'CSC/2021/001', 'Bachelor of Science (B.Sc.) Computer Science', 'Computer Science',
                   'Science', 'Computer Science', 'Second Class Upper', '2025', '2021', ''];
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -231,7 +247,7 @@ router.get('/', ANY, async (req, res) => {
        FROM batches WHERE tenant_id = $1`, [req.tenant.id]);
     res.json({ data: r.rows, page, limit, total: parseInt(c.rows[0].total), pending_count: parseInt(c.rows[0].pending),
                approval_required: await approvalRequired(req.tenant.id), max_rows: MAX_ROWS,
-               doc_types: DOC_TYPES, status_labels: STATUS_LABEL });
+               doc_types: req.kit.names, status_labels: STATUS_LABEL });
   } catch (e) { sendErr(res, e, 'Failed to load batches. Has migration 006 been run?'); }
 });
 
@@ -240,11 +256,11 @@ router.post('/', ISSUERS, async (req, res) => {
   try {
     const docType  = clean(req.body.doc_type, 100);
     const fileName = clean(req.body.file_name, 255) || 'upload.csv';
-    if (!DOC_TYPES.includes(docType)) throw bad(400, 'Pick a document type for this batch.');
+    if (!req.kit.names.includes(docType)) throw bad(400, 'Pick a document type for this batch.');
     let table;
     try { table = parseCsv(req.body.csv); } catch (e) { throw bad(400, e.message); }
     if (table.length < 2) throw bad(400, 'The file has no data rows. Row 1 must be the column headings.');
-    const { index, unknown } = mapHeaders(table[0]);
+    const { index, unknown } = mapHeaders(table[0], req.kit);
     const missing = REQUIRED.filter(k => index[k] === undefined);
     if (missing.length) throw bad(400, `Missing column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Download the template to see the expected headings.`);
     const body = table.slice(1);
@@ -258,7 +274,7 @@ router.post('/', ISSUERS, async (req, res) => {
       }
       return { row_no: i + 2, data };   // row numbers as the spreadsheet shows them
     });
-    const rows = await validateRows(req.tenant, docType, records);
+    const rows = await validateRows(req.tenant, docType, records, req.kit);
     const errorCount = rows.filter(r => r.errors.length).length;
 
     await client.query('BEGIN');

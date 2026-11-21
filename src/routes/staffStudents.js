@@ -8,6 +8,7 @@ const pool    = require('../db/pool');
 const { requireStaff } = require('../middleware/staffAuth');
 const { logActivity } = require('../utils/activity');
 const { parseCsv, toCsv } = require('../utils/csv');
+const { sectorColumns } = require('../utils/docTemplates');
 const R = require('../utils/studentRecords');
 
 const ANY     = requireStaff();
@@ -28,10 +29,10 @@ function sendErr(res, e, fallback) {
 router.get('/lookup', ISSUERS, async (req, res) => {
   try {
     const matric = R.normMatric(req.query.matric);
-    if (!matric) throw bad(400, 'Enter a matric number.');
+    if (!matric) throw bad(400, `Enter a ${req.kit.terms.id_label.toLowerCase()}.`);
     const [r, required, has] = await Promise.all([
       R.lookupStudent(req.tenant.id, matric), R.requireRegistered(req.tenant.id), R.hasRecords(req.tenant.id)]);
-    const check = r.found ? R.statusCheck(String(req.query.doc_type || ''), r.record.status) : {};
+    const check = r.found ? R.statusCheck(String(req.query.doc_type || ''), r.record.status, req.kit) : {};
     res.json({ ...r, check, require_registered: required, has_records: has });
   } catch (e) { sendErr(res, e, 'Lookup failed.'); }
 });
@@ -89,6 +90,13 @@ const norm = h => String(h || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_
 
 router.get('/template.csv', ISSUERS, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  if (req.kit.sector !== 'tertiary') {
+    // The sector's own headings, hidden fields left out
+    const own = sectorColumns(req.kit), f = req.kit.pack.fields;
+    const heads = Object.keys(COLUMNS).filter(k => !(k in f) || f[k]).map(k => own[k] ? own[k][0] : k);
+    res.setHeader('Content-Disposition', `attachment; filename="${req.kit.terms.list.replace(/ /g, '-')}-template.csv"`);
+    return res.send('\ufeff' + toCsv([heads]));
+  }
   res.setHeader('Content-Disposition', 'attachment; filename="student-list-template.csv"');
   res.send('﻿' + toCsv([Object.keys(COLUMNS),
     ['CSC/2021/001', 'Amina Bello', 'Computer Science', 'Science', 'Computer Science', 'First Class', '2021', '2025', 'graduated'],
@@ -103,9 +111,10 @@ router.post('/lists', ISSUERS, async (req, res) => {
     try { table = parseCsv(req.body.csv); } catch (e) { throw bad(400, e.message); }
     if (table.length < 2) throw bad(400, 'The file has no data rows. Row 1 must be the column headings.');
     const index = {};
-    table[0].forEach((h, i) => { const k = Object.keys(COLUMNS).find(c => COLUMNS[c].includes(norm(h))); if (k && index[k] === undefined) index[k] = i; });
+    const own = sectorColumns(req.kit);
+    table[0].forEach((h, i) => { const k = Object.keys(COLUMNS).find(c => COLUMNS[c].includes(norm(h)) || (own[c] || []).includes(norm(h))); if (k && index[k] === undefined) index[k] = i; });
     for (const k of ['matric_number', 'full_name'])
-      if (index[k] === undefined) throw bad(400, `Missing column: ${k}. Download the template to see the expected headings.`);
+      if (index[k] === undefined) throw bad(400, `Missing column: ${(own[k] || [k])[0]}. Download the template to see the expected headings.`);
     const body = table.slice(1).filter(r => r.some(c => String(c || '').trim()));
     if (body.length > MAX_ROWS) throw bad(413, `This file has ${body.length} rows. The limit is ${MAX_ROWS}; split it.`);
 
@@ -115,12 +124,12 @@ router.post('/lists', ISSUERS, async (req, res) => {
       for (const [k, col] of Object.entries(index)) { const v = clean(cells[col], k.endsWith('year') ? 4 : 200); if (v) d[k] = v; }
       d.matric_number = R.normMatric(d.matric_number);
       const errs = [];
-      if (!d.matric_number) errs.push('no matric number');
+      if (!d.matric_number) errs.push(`no ${req.kit.terms.id_label.toLowerCase()}`);
       if (!d.full_name) errs.push('no name');
       for (const k of ['full_name', 'programme']) if (/^[=+@]/.test(d[k] || '')) errs.push(`${k} looks like a spreadsheet formula`);
       for (const k of ['entry_year', 'graduation_year']) if (d[k] && !/^\d{4}$/.test(d[k])) errs.push(`${k} must be four digits`);
       if (d.status) d.status = d.status.toLowerCase().slice(0, 30);
-      if (d.matric_number && seen.has(d.matric_number)) errs.push('matric number repeated in this file');
+      if (d.matric_number && seen.has(d.matric_number)) errs.push(`${req.kit.terms.id_label.toLowerCase()} repeated in this file`);
       if (errs.length) { problems.push({ row: row_no, error: errs.join('; ') }); return; }
       seen.add(d.matric_number); rows.push(d);
     });

@@ -5,6 +5,7 @@
 
 const { tagTenant } = require('../telemetry');
 const pool = require('../db/pool');
+const ROOT_DOMAIN = process.env.TENANT_ROOT_DOMAIN || 'univerify.ng';
 
 // Cache tenants in memory for 5 minutes to avoid a DB lookup on every request
 const tenantCache = new Map();
@@ -19,7 +20,7 @@ async function getTenant(subdomain) {
   const result = await pool.query(
     `SELECT id, name, subdomain, short_code, logo_url, primary_colour,
             accent_colour, institution_type, contact_email, active, plan,
-            max_documents, paystack_split_code, website
+            max_documents, paystack_split_code, website, sector
      FROM tenants
      WHERE subdomain = $1 AND active = TRUE`,
     [subdomain]
@@ -78,7 +79,7 @@ async function tenantResolver(req, res, next) {
           <head><title>Not Found — UniVerify</title></head>
           <body style="font-family:Arial;text-align:center;padding:80px;color:#333">
             <h1 style="color:#1A3A5C">UniVerify</h1>
-            <p>No institution found for <strong>${String(subdomain).replace(/[^a-z0-9-]/gi, '')}.univerify.ng</strong></p>
+            <p>No issuer found for <strong>${String(subdomain).replace(/[^a-z0-9-]/gi, '')}.${ROOT_DOMAIN.replace(/[^a-z0-9.-]/gi, '')}</strong></p>
             <p style="color:#888">If you are an institution looking to get started, contact
               <a href="mailto:info@akeenalee.com">info@akeenalee.com</a></p>
           </body>

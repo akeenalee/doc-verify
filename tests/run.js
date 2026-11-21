@@ -23,7 +23,11 @@ const http = require('http');
 const { Client } = require('pg');
 
 const ROOT = path.join(__dirname, '..');
-const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10', 'e2e11', 'e2e12'];
+const SUITES = ['e2e', 'e2e2', 'e2e3', 'e2e4', 'e2e5', 'e2e6', 'e2e7', 'e2e8', 'e2e9', 'e2e10', 'e2e11', 'e2e12', 'e2e13'];
+// Suites for the sectors deployment (DEPLOYMENT=sectors). Its start-up guard
+// refuses a database holding school tenants, so they get their own database,
+// rebuilt from scratch on every run.
+const SECTOR_SUITES = ['e2e13'];
 
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(2); }
 
@@ -38,6 +42,10 @@ try {
   const env = require('dotenv').parse(fs.readFileSync(path.join(ROOT, '.env')));
   if (env.DATABASE_URL && env.DATABASE_URL.trim() === url.trim()) fail('TEST_DATABASE_URL is the DATABASE_URL in .env. Refusing.');
 } catch (e) { if (e.code !== 'ENOENT') throw e; }
+
+// The sectors database: SECTORS_TEST_DATABASE_URL, or the test database's name plus _sectors
+const sectorsUrl = process.env.SECTORS_TEST_DATABASE_URL || (() => { const u = new URL(url); u.pathname += '_sectors'; return u.toString(); })();
+if (sectorsUrl.trim() === url.trim()) fail('SECTORS_TEST_DATABASE_URL must differ from TEST_DATABASE_URL.');
 
 const ADMIN_USER = 'iladmin-test';
 const ADMIN_PASS = 'T3st-' + crypto.randomBytes(9).toString('hex');
@@ -57,30 +65,50 @@ const serverEnv = {
 };
 // e2e11 runs a fake OTLP collector on :4318 and checks what reaches it
 const SUITE_SERVER_ENV = {
+  e2e13: { DATABASE_URL: sectorsUrl, DEPLOYMENT: 'sectors' },
   e2e11: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318', OTEL_METRIC_EXPORT_INTERVAL: '1000', OTEL_BSP_SCHEDULE_DELAY: '200' },
 };
 const suiteEnv = { ...process.env, TEST_DATABASE_URL: url, ADMIN_USER, ADMIN_PASS,
   PAYSTACK_SECRET_KEY: serverEnv.PAYSTACK_SECRET_KEY, DOC_SECRET: 'testsecret', SIGNING_MASTER_KEY: '' };
+// Sector suites read the sectors database, and get the school one plus the
+// server settings so they can check the start-up guard against both
+const SUITE_ENV = {
+  e2e13: { TEST_DATABASE_URL: sectorsUrl, TERTIARY_TEST_DATABASE_URL: url, SERVER_ENV: JSON.stringify(serverEnv) },
+};
 
-async function sql(file) {
-  const c = new Client({ connectionString: url });
+async function sql(file, db = url) {
+  const c = new Client({ connectionString: db });
   await c.connect();
   try { await c.query(fs.readFileSync(path.join(__dirname, file), 'utf8')); } finally { await c.end(); }
 }
 
-async function setup() {
-  const c = new Client({ connectionString: url });
+async function setup(db = url, seed = 'seed.sql') {
+  const c = new Client({ connectionString: db });
   await c.connect();
   const has = (await c.query("SELECT to_regclass('public.tenants') AS t")).rows[0].t;
   await c.end();
-  if (!has) { console.log('Creating schema'); await sql('schema.sql'); }
+  if (!has) { console.log('Creating schema'); await sql('schema.sql', db); }
   // Numbered migrations are idempotent; this picks up any newer than schema.sql
   for (const f of fs.readdirSync(path.join(ROOT, 'migrations')).filter(f => /^\d{3}_.*\.js$/.test(f)).sort()) {
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'migrations', f)], { env: { ...process.env, DATABASE_URL: url }, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'migrations', f)], { env: { ...process.env, DATABASE_URL: db }, encoding: 'utf8' });
     if (r.status !== 0) fail(`Migration ${f} failed:\n${r.stderr || r.stdout}`);
   }
-  await sql('seed.sql');
+  await sql(seed, db);
   console.log('Test database ready.');
+}
+
+// A fresh sectors database: dropped, created, schema, migrations, demo only
+async function freshSectorsDb() {
+  const target = new URL(sectorsUrl), name = decodeURIComponent(target.pathname.slice(1));
+  if (!/^[a-z0-9_]+$/i.test(name)) fail(`Unexpected sectors database name "${name}".`);
+  const adminUrl = new URL(sectorsUrl); adminUrl.pathname = '/postgres';
+  const c = new Client({ connectionString: adminUrl.toString() });
+  await c.connect();
+  try {
+    await c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    await c.query(`CREATE DATABASE "${name}"`);
+  } finally { await c.end(); }
+  await setup(sectorsUrl, 'seed-sectors.sql');
 }
 
 function health() {
@@ -106,7 +134,7 @@ async function startServer(logFile, extraEnv = {}) {
 function runSuite(name) {
   return new Promise(resolve => {
     const out = [];
-    const p = spawn(process.execPath, [path.join(__dirname, name + '.js')], { cwd: __dirname, env: suiteEnv });
+    const p = spawn(process.execPath, [path.join(__dirname, name + '.js')], { cwd: __dirname, env: { ...suiteEnv, ...SUITE_ENV[name] } });
     p.stdout.on('data', d => { out.push(d); process.stdout.write(d); });
     p.stderr.on('data', d => process.stderr.write(d));
     p.on('close', code => {
@@ -127,7 +155,8 @@ function runSuite(name) {
   const results = [];
   for (const s of suites) {
     console.log(`\n=== ${s} ===`);
-    await sql('reset.sql');
+    if (SECTOR_SUITES.includes(s)) await freshSectorsDb();
+    else await sql('reset.sql');
     const srv = await startServer(path.join(outDir, `server-${s}.log`), SUITE_SERVER_ENV[s]);
     try { results.push(await runSuite(s)); } finally { srv.kill(); await new Promise(r => { if (srv.exitCode !== null) return r(); srv.once('exit', r); setTimeout(r, 5000); }); await new Promise(r => setTimeout(r, 300)); }
   }
