@@ -19,6 +19,7 @@ const http   = require('http');
 const https  = require('https');
 const net    = require('net');
 const pool   = require('../db/pool');
+const { TERTIARY } = require('./docTemplates');
 
 const FIELDS = ['full_name', 'programme', 'faculty', 'department', 'degree_class', 'entry_year', 'graduation_year'];
 const normMatric = m => String(m || '').trim().toUpperCase().slice(0, 50);
@@ -203,18 +204,26 @@ async function requireRegistered(tenantId) {
 
 // Awards need a finished programme; records of study (transcripts, results,
 // attestation) can be issued at any stage, e.g. a student transferring abroad.
+// The sector kit decides which types are awards and which statuses count as
+// finished; the tertiary kit gives exactly the lists below.
 const AWARD_TYPES = ['Certificate', 'Diploma', 'Completion'];
 const FINISHED = ['graduated', 'completed', 'alumni', 'alumnus'];
 const UNUSUAL = ['withdrawn', 'expelled', 'rusticated', 'suspended', 'deceased', 'transferred'];
 const STATUS_LABEL = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : 'not given';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 // { error } blocks issue, { warning } is shown, {} is fine. No status: fine.
-function statusCheck(docType, status) {
+function statusCheck(docType, status, kit = TERTIARY) {
   const st = String(status || '').toLowerCase();
   if (!st) return {};
-  if (AWARD_TYPES.includes(docType) && !FINISHED.includes(st))
-    return { error: `Student records show status "${STATUS_LABEL(st)}". A ${docType === 'Completion' ? 'completion certificate' : docType.toLowerCase()} needs status Graduated.` };
-  if (UNUSUAL.includes(st)) return { warning: `Student records show status "${STATUS_LABEL(st)}". Check before issuing.` };
+  const p = kit.pack, records = cap(p.terms.records);
+  // "Student records show", "Member register shows"
+  const show = /s$/.test(p.terms.records) ? 'show' : 'shows';
+  if (kit.awards.includes(docType) && !p.finished.includes(st)) {
+    const what = docType === 'Completion' ? 'completion certificate' : docType.toLowerCase();
+    return { error: `${records} ${show} status "${STATUS_LABEL(st)}". ${/^[aeiou]/.test(what) ? 'An' : 'A'} ${what} needs status ${p.finished_label}.` };
+  }
+  if (p.unusual.includes(st)) return { warning: `${records} ${show} status "${STATUS_LABEL(st)}". Check before issuing.` };
   return {};
 }
 
@@ -231,17 +240,17 @@ async function hasRecords(tenantId) {
 // Once a student is found, the record is the authority: a different name
 // always blocks, and the details printed come from the record (lockRecord).
 // Returns { errors: [], warnings: [], source, record }
-function assess(lookup, docType, name, required) {
+function assess(lookup, docType, name, required, kit = TERTIARY) {
   const errors = [], warnings = [];
   const flag = msg => (required ? errors : warnings).push(msg);
   if (!lookup || !lookup.found) {
     const why = lookup && lookup.sis_error ? ` The SIS couldn't be reached: ${lookup.sis_error}` : '';
-    flag(`Matric number not found in student records.${why}`);
+    flag(`${kit.terms.id_label} not found in ${kit.terms.records}.${why}`);
     return { errors, warnings, source: null };
   }
   const rec = lookup.record;
-  if (name && !sameName(rec.full_name, name)) errors.push(`Name doesn't match student records, which say "${rec.full_name}".`);
-  const s = statusCheck(docType, rec.status);
+  if (name && !sameName(rec.full_name, name)) errors.push(`Name doesn't match ${kit.terms.records}, which ${/s$/.test(kit.terms.records) ? 'say' : 'says'} "${rec.full_name}".`);
+  const s = statusCheck(docType, rec.status, kit);
   if (s.error) errors.push(s.error);   // the school's own records say not finished: always blocks an award
   if (s.warning) warnings.push(s.warning);
   return { errors, warnings, source: lookup.source, record: rec };
@@ -268,10 +277,10 @@ function lockRecord(data, record) {
 
 // One document: look up, then judge. Skips everything when the school has no
 // SIS or list and doesn't require registration.
-async function registrationCheck(tenantId, docType, matric, name) {
+async function registrationCheck(tenantId, docType, matric, name, kit = TERTIARY) {
   const required = await requireRegistered(tenantId);
   if (!required && !(await hasRecords(tenantId))) return { errors: [], warnings: [], source: null };
-  return assess(await lookupStudent(tenantId, matric), docType, name, required);
+  return assess(await lookupStudent(tenantId, matric), docType, name, required, kit);
 }
 
 module.exports = {

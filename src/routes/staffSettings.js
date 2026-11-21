@@ -17,9 +17,9 @@ const { logActivity }  = require('../utils/activity');
 const { clearTenantCache } = require('../middleware/tenantResolver');
 const { sniffImage, isoDate } = require('../utils/branding');
 const { generatePDF } = require('../utils/pdfGenerator');
-const { DOC_TYPES }   = require('./staffApp');
+
 const { listKeys, rotateKey, activeKey, currentMasterRef } = require('../utils/signing');
-const { FIELDS, disclosure } = require('../utils/disclosure');
+const { FIELDS, disclosure, fieldsFor } = require('../utils/disclosure');
 
 const OWNER = requireStaff('owner');
 const LOGO_MAX = 300 * 1024;
@@ -164,7 +164,7 @@ router.get('/signatories', OWNER, async (req, res) => {
       `SELECT id, slot, full_name, title, doc_types, effective_from, effective_to, created_by, created_at
        FROM signatories WHERE tenant_id = $1
        ORDER BY slot, effective_from DESC, created_at DESC`, [req.tenant.id]);
-    res.json({ signatories: r.rows.map(publicSignatory), slots: SLOT_LABEL, doc_types: DOC_TYPES,
+    res.json({ signatories: r.rows.map(publicSignatory), slots: SLOT_LABEL, doc_types: req.kit.names,
                limits: { signature_kb: SIG_MAX / 1024 } });
   } catch (e) { sendErr(res, e, 'Failed to load signatories. Has migration 005 been run?'); }
 });
@@ -179,7 +179,7 @@ router.post('/signatories', OWNER, async (req, res) => {
     if (![1, 2].includes(slot)) throw bad(400, 'Pick a signature position.');
     if (!full_name) throw bad(400, 'Full name is required.');
     if (!title) throw bad(400, 'Title is required, for example Registrar.');
-    if (doc_types.some(t => !DOC_TYPES.includes(t))) throw bad(400, 'Unknown document type.');
+    if (doc_types.some(t => !req.kit.names.includes(t))) throw bad(400, 'Unknown document type.');
     if (!isDate(from)) throw bad(400, 'Start date is required.');
     if (to && !isDate(to)) throw bad(400, 'End date must be a date.');
     if (to && to < from) throw bad(400, 'End date can\'t be before the start date.');
@@ -340,7 +340,7 @@ router.patch('/security', OWNER, async (req, res) => {
 router.get('/disclosure', OWNER, async (req, res) => {
   try {
     const r = await pool.query('SELECT disclosure FROM tenants WHERE id = $1', [req.tenant.id]);
-    res.json({ disclosure: disclosure(r.rows[0]?.disclosure), fields: FIELDS });
+    res.json({ disclosure: disclosure(r.rows[0]?.disclosure), fields: fieldsFor(req.kit) });
   } catch (e) { sendErr(res, e, 'Failed to load.'); }
 });
 
@@ -351,26 +351,27 @@ router.patch('/disclosure', OWNER, async (req, res) => {
     const next = { ...cur };
     for (const k of Object.keys(FIELDS)) if (typeof body[k] === 'boolean') next[k] = body[k];
     const changed = Object.keys(FIELDS).filter(k => next[k] !== cur[k]);
-    if (!changed.length) return res.json({ disclosure: cur, fields: FIELDS });
+    if (!changed.length) return res.json({ disclosure: cur, fields: fieldsFor(req.kit) });
     await pool.query('UPDATE tenants SET disclosure = $2 WHERE id = $1', [req.tenant.id, JSON.stringify(next)]);
     await logActivity(req, { action: 'disclosure_updated', targetType: 'tenant', targetId: req.tenant.id,
-      detail: { changes: changed.map(k => `${FIELDS[k].label}: ${next[k] ? 'shown' : 'hidden'}`) } });
-    res.json({ disclosure: next, fields: FIELDS });
+      detail: { changes: changed.map(k => `${(fieldsFor(req.kit)[k] || FIELDS[k]).label}: ${next[k] ? 'shown' : 'hidden'}`) } });
+    res.json({ disclosure: next, fields: fieldsFor(req.kit) });
   } catch (e) { sendErr(res, e, 'Failed to save.'); }
 });
 
 router.get('/preview.pdf', OWNER, async (req, res) => {
   try {
-    const type = DOC_TYPES.includes(req.query.type) ? req.query.type : 'Certificate';
+    const type = req.kit.names.includes(req.query.type) ? req.query.type : req.kit.names[0];
+    const tertiary = req.kit.sector === 'tertiary';
     const date = isDate(req.query.date) ? req.query.date : today();
     const t = req.tenant;
     const doc = {
       doc_id: `${t.short_code || 'DOC'}-SPECIMEN`,
-      title: type === 'Transcript' ? 'Academic Transcript' : 'Bachelor of Science (B.Sc.) Computer Science',
-      issued_to: 'Specimen Graduate', issued_by: t.name, doc_type: type,
+      title: !tertiary ? type : type === 'Transcript' ? 'Academic Transcript' : 'Bachelor of Science (B.Sc.) Computer Science',
+      issued_to: tertiary ? 'Specimen Graduate' : 'Specimen Holder', issued_by: t.name, doc_type: type,
       issue_date: new Date(date + 'T12:00:00Z'), expiry_date: null, status: 'active', tenant_id: t.id,
       metadata: {
-        matric_number: 'SPEC/0001', institution_type: t.institution_type === 'government' ? 'government' : 'academic',
+        matric_number: 'SPEC/0001', institution_type: t.institution_type === 'government' || req.kit.pack.layout === 'official' ? 'government' : 'academic',
         programme: 'Computer Science', course: 'Computer Science', faculty: 'Science', department: 'Computer Science',
         degree_class: 'Second Class Upper', class: 'Second Class Upper', graduation_year: date.slice(0, 4),
         entry_year: String(Number(date.slice(0, 4)) - 4),

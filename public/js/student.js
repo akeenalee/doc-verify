@@ -1,6 +1,29 @@
 const BASE = window.location.origin;
 let selectedBundle = null;
 
+// Sector wording: a school keeps "Matric number" and "Student Portal"; a
+// professional body sees "Membership number" and "Member Portal", and so on.
+// W() rewrites a sentence; applyTerms() rewrites the static page once.
+let TERMS = null;
+function W(text) {
+  if (!TERMS) return text;
+  return text.replace(/Matric number/g, TERMS.id_label).replace(/matric number/g, TERMS.id_label.toLowerCase())
+             .replace(/Student Portal/g, TERMS.portal_title);
+}
+function applyTerms() {
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) { const t = W(n.nodeValue); if (t !== n.nodeValue) n.nodeValue = t; }
+  document.title = W(document.title);
+  for (const id of ['login-matric', 'reg-matric']) { const el = document.getElementById(id); if (el) el.placeholder = ''; }
+}
+fetch('/api/tenant-info', { headers: { Accept: 'application/json' } }).then(r => r.json()).then(t => {
+  if (t.terms && t.sector && t.sector !== 'tertiary') {
+    TERMS = { id_label: t.terms.id_label, portal_title: t.terms.portal.replace(/\b\w/g, c => c.toUpperCase()) };
+    applyTerms();
+    for (const id of ['login-institution', 'reg-institution']) { const el = document.getElementById(id); if (el) el.placeholder = 'e.g. ' + t.name; }
+  }
+}).catch(() => {});
+
 const params = new URLSearchParams(window.location.search);
 if (params.get('success') === 'tokens_added') {
   showGlobalSuccess(`${params.get('tokens')} verification token(s) added to your account.`);
@@ -39,8 +62,8 @@ document.getElementById('claim-btn').addEventListener('click', async () => {
       body: JSON.stringify({ claim_code: document.getElementById('claim-code').value.trim() }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    showGlobalSuccess('Matric number confirmed. Your documents are now available.');
+    if (!res.ok) throw new Error(W(data.error || ""));
+    showGlobalSuccess(W('Matric number confirmed. Your documents are now available.'));
     showPortal({ ...data.student, claim_required: true });
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -73,7 +96,7 @@ document.getElementById('login-btn').addEventListener('click', async () => {
       body: JSON.stringify({ matric_number: matric, institution, pin }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(W(data.error || ""));
     showPortal(data.student);
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -91,7 +114,7 @@ document.getElementById('register-btn').addEventListener('click', async () => {
   const btn         = document.getElementById('register-btn');
   errEl.classList.remove('show');
   if (!matric || !institution || !pin) {
-    errEl.textContent = 'Matric number, institution, and PIN are required.';
+    errEl.textContent = W('Matric number, institution, and PIN are required.');
     errEl.classList.add('show'); return;
   }
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Creating account...';
@@ -102,7 +125,7 @@ document.getElementById('register-btn').addEventListener('click', async () => {
       body: JSON.stringify({ matric_number: matric, institution, full_name, email, phone, pin, claim_code }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(W(data.error || ""));
     showPortal(data.student);
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -168,7 +191,7 @@ async function loadMyDocs() {
     const docs = data.documents || [];
 
     if (!docs.length) {
-      list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">No documents found under your matric number (<strong>' + esc(data.matric_number || '') + '</strong>).<br/>Ask your Registrar to generate your document using your matric number.</p>';
+      list.innerHTML = '<p style="font-size:13px;color:#aaa;text-align:center;padding:20px">' + W('No documents found under your matric number') + ' (<strong>' + esc(data.matric_number || '') + '</strong>).<br/>Ask your Registrar to generate your document using your matric number.</p>';
       return;
     }
 
@@ -244,7 +267,7 @@ document.getElementById('buy-btn').addEventListener('click', async () => {
       body: JSON.stringify({ bundle_id: selectedBundle }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(W(data.error || ""));
     window.location.href = data.payment_url;
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');
@@ -297,7 +320,7 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
       }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(W(data.error || ""));
     showGlobalSuccess('Preferences saved.');
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.add('show');

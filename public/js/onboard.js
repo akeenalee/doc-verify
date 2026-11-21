@@ -117,6 +117,7 @@
     const body = {};
     ['name','subdomain','short_code','institution_type','plan','primary_colour','accent_colour',
      'logo_url','contact_email','contact_phone','website','address'].forEach(k => { body[k] = f.elements[k].value.trim(); });
+    if ($('sector-row').style.display !== 'none') body.sector = f.elements.sector.value;
     body.presenter_link = $('f-presenter').checked;
 
     const btn = $('create-btn');
@@ -167,6 +168,27 @@
     catch (e) { toast('Copy failed. Select the text instead.', true); }
   }));
 
+  // ── SECTORS ─────────────────────────────────────────────────────────────
+  // The school service has one sector, so the picker stays hidden there.
+  // The sectors service lists its sectors and the documents each starts with.
+  let SECTOR_LABEL = {};
+  function showSectors(list) {
+    SECTOR_LABEL = Object.fromEntries(list.map(s => [s.key, s.label]));
+    const row = $('sector-row'), sel = $('f-sector');
+    if (list.length < 2) { row.style.display = 'none'; return; }
+    if (!sel.options.length) {
+      sel.innerHTML = '<option value="">Choose a sector</option>' +
+        list.map(s => '<option value="' + esc(s.key) + '">' + esc(s.label) + '</option>').join('');
+      sel.addEventListener('change', () => {
+        const s = list.find(x => x.key === sel.value);
+        $('sector-hint').textContent = s
+          ? 'Starts with: ' + s.doc_types.join(', ') + '. Holder number: ' + s.id_label + '. All editable later.'
+          : 'Sets the starting document types, wording and holder number label. All editable later.';
+      });
+    }
+    row.style.display = '';
+  }
+
   // ── LIST ────────────────────────────────────────────────────────────────
   async function loadTenants() {
     const body = $('tenants-body');
@@ -174,6 +196,7 @@
       const { ok, data } = await api('/admin-api/tenants');
       if (!ok) { body.innerHTML = '<tr><td colspan="7" class="empty">' + esc(data.error || 'Failed to load.') + '</td></tr>'; return; }
       ROOT = data.root_subdomain || ROOT;
+      showSectors(data.sectors || []);
       if (!data.tenants.length) { body.innerHTML = '<tr><td colspan="7" class="empty">No institutions yet.</td></tr>'; return; }
       body.innerHTML = data.tenants.map(t => {
         const isRoot = t.subdomain === ROOT;
@@ -187,7 +210,7 @@
             '<strong style="color:#fff">' + esc(t.name) + '</strong><div class="muted">' + esc(t.contact_email || '') + '</div></td>' +
           '<td><a href="' + esc(t.url) + '" target="_blank" rel="noopener">' + esc(t.subdomain) + '</a></td>' +
           '<td>' + esc(t.short_code) + '</td>' +
-          '<td>' + esc(t.institution_type) + '</td>' +
+          '<td>' + esc(SECTOR_LABEL[t.sector] && Object.keys(SECTOR_LABEL).length > 1 ? SECTOR_LABEL[t.sector] : t.institution_type) + '</td>' +
           '<td>' + esc(t.documents) + '</td>' +
           '<td>' + status + '</td>' +
           '<td>' + action + '</td></tr>';

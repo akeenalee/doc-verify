@@ -19,7 +19,7 @@ const { logActivity } = require('../utils/activity');
 const { toCsv } = require('../utils/csv');
 const { createZip } = require('../utils/zip');
 const { buildVerifyUrl } = require('../utils/docUtils');
-const { DOC_TYPES } = require('./staffApp');
+const { ROOT_DOMAIN } = require('../deployment');
 
 const PRINTERS = requireStaff('owner', 'officer', 'approver', 'vendor');
 const OWNER    = requireStaff('owner');
@@ -38,10 +38,10 @@ function sendErr(res, e, fallback) {
   res.status(500).json({ error: fallback });
 }
 
-async function loadSpecs(tenantId) {
+async function loadSpecs(tenantId, docTypes) {
   const r = await pool.query('SELECT * FROM print_specs WHERE tenant_id = $1', [tenantId]);
   const out = {};
-  for (const t of DOC_TYPES) {
+  for (const t of docTypes) {
     const row = r.rows.find(x => x.doc_type === t);
     out[t] = row ? { anchor: row.anchor, x_mm: Number(row.x_mm), y_mm: Number(row.y_mm), size_mm: Number(row.size_mm),
                      paper: row.paper, notes: row.notes || '', updated_at: row.updated_at, custom: true }
@@ -56,21 +56,21 @@ function moduleMm(sizeMm, sampleUrl) {
   const n = QRCode.create(sampleUrl, QR_OPTS).modules.size + 8;
   return Math.round((sizeMm / n) * 100) / 100;
 }
-const sampleUrl = t => `https://${t.subdomain}.univerify.ng/verify?doc=${t.short_code || 'DOC'}-20260101-XXXXXXXXXXXXXXXX&sig=2.99.${'0'.repeat(32)}`;
+const sampleUrl = t => `https://${t.subdomain}.${ROOT_DOMAIN}/verify?doc=${t.short_code || 'DOC'}-20260101-XXXXXXXXXXXXXXXX&sig=2.99.${'0'.repeat(32)}`;
 
 // ── Placement specs ──────────────────────────────────────────────────────────
 router.get('/specs', PRINTERS, async (req, res) => {
   try {
-    const specs = await loadSpecs(req.tenant.id);
+    const specs = await loadSpecs(req.tenant.id, req.kit.names);
     for (const t of Object.keys(specs)) specs[t].module_mm = moduleMm(specs[t].size_mm, sampleUrl(req.tenant));
-    res.json({ specs, doc_types: DOC_TYPES, anchors: ANCHORS, papers: Object.keys(PAPERS), min_module_mm: MIN_MODULE_MM, dpi: DPI });
+    res.json({ specs, doc_types: req.kit.names, anchors: ANCHORS, papers: Object.keys(PAPERS), min_module_mm: MIN_MODULE_MM, dpi: DPI });
   } catch (e) { sendErr(res, e, 'Failed to load print specs.'); }
 });
 
 router.put('/specs/:docType', OWNER, async (req, res) => {
   try {
     const t = req.params.docType;
-    if (!DOC_TYPES.includes(t)) throw bad(400, 'Unknown document type.');
+    if (!req.kit.names.includes(t)) throw bad(400, 'Unknown document type.');
     const b = req.body || {};
     const paper = PAPERS[b.paper] ? b.paper : 'A4';
     const [pw, ph] = PAPERS[paper];
@@ -95,7 +95,7 @@ router.put('/specs/:docType', OWNER, async (req, res) => {
       [req.tenant.id, t, anchor, x, y, size, paper, notes, req.staff.id]);
     await logActivity(req, { action: 'print_spec_updated', targetType: 'print_spec', targetId: t,
       detail: { anchor, x_mm: x, y_mm: y, size_mm: size, paper } });
-    res.json({ spec: (await loadSpecs(req.tenant.id))[t] });
+    res.json({ spec: (await loadSpecs(req.tenant.id, req.kit.names))[t] });
   } catch (e) { sendErr(res, e, 'Failed to save the print spec.'); }
 });
 
@@ -160,8 +160,8 @@ function specSheet(tenant, docType, spec, out) {
 router.get('/specs/:docType/sheet.pdf', PRINTERS, async (req, res) => {
   try {
     const t = req.params.docType;
-    if (!DOC_TYPES.includes(t)) throw bad(404, 'Unknown document type.');
-    const spec = (await loadSpecs(req.tenant.id))[t];
+    if (!req.kit.names.includes(t)) throw bad(404, 'Unknown document type.');
+    const spec = (await loadSpecs(req.tenant.id, req.kit.names))[t];
     spec.module_mm = moduleMm(spec.size_mm, sampleUrl(req.tenant));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="qr-spec-${t.toLowerCase()}.pdf"`);
@@ -345,7 +345,7 @@ router.get('/jobs/:id/pack.zip', PRINTERS, async (req, res) => {
     const docs = (await pool.query(
       `SELECT d.*, pd.row_no FROM print_job_docs pd JOIN documents d ON d.doc_id = pd.doc_id AND d.tenant_id = $1
        WHERE pd.job_id = $2 AND d.status = 'active' ORDER BY pd.row_no`, [req.tenant.id, j.id])).rows;
-    const spec = (await loadSpecs(req.tenant.id))[j.doc_type] || { ...DEFAULT_SPEC };
+    const spec = (await loadSpecs(req.tenant.id, req.kit.names))[j.doc_type] || { ...DEFAULT_SPEC };
     spec.module_mm = moduleMm(spec.size_mm, sampleUrl(req.tenant));
     const px = Math.round(spec.size_mm / 25.4 * DPI);
     await logActivity(req, { action: 'print_pack_downloaded', targetType: 'print_job', targetId: j.id,

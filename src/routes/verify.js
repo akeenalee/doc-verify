@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
     const result = await pool.query(
       `SELECT d.id, d.doc_id, d.title, d.issued_to, d.issued_by, d.doc_type,
               d.issue_date, d.expiry_date, d.status, d.metadata, d.tenant_id, d.superseded_by,
-              COALESCE(t.sig_strict, FALSE) AS sig_strict, t.disclosure
+              COALESCE(t.sig_strict, FALSE) AS sig_strict, t.disclosure, t.sector
        FROM documents d LEFT JOIN tenants t ON t.id = d.tenant_id
        WHERE d.doc_id = $1`,
       [doc]
@@ -431,14 +431,17 @@ function renderPage(pageTitle, message, state, docData) {
 
   const show = docData ? (docData._show || disclosure(docData.disclosure)) : {};
   const meta = (docData && docData.metadata) || {};
+  // Row labels in the issuer's sector words; schools keep the original ones
+  const sf = docData && docData.sector && docData.sector !== 'tertiary' ? require('../sectors').pack(docData.sector).fields : null;
+  const lab = (slot, school) => sf ? sf[slot] : school;
   const docFields = docData ? `
     <table style="width:100%;border-collapse:collapse;margin-top:16px;">
       ${row('Document ID', escHtml(docData.doc_id), true)}
       ${show.title ? row('Title', escHtml(docData.title)) : ''}
       ${show.holder_name ? row('Issued To', escHtml(docData.issued_to)) : ''}
-      ${show.programme && meta.programme ? row('Programme', escHtml(meta.programme)) : ''}
-      ${show.class_of_degree && (meta.degree_class || meta.class) ? row('Class of Degree', escHtml(meta.degree_class || meta.class)) : ''}
-      ${show.graduation_year && meta.graduation_year ? row('Graduation Year', escHtml(meta.graduation_year)) : ''}
+      ${show.programme && meta.programme && lab('programme', 'Programme') ? row(lab('programme', 'Programme'), escHtml(meta.programme)) : ''}
+      ${show.class_of_degree && (meta.degree_class || meta.class) && lab('degree_class', 'Class of Degree') ? row(lab('degree_class', 'Class of Degree'), escHtml(meta.degree_class || meta.class)) : ''}
+      ${show.graduation_year && meta.graduation_year && lab('graduation_year', 'Graduation Year') ? row(lab('graduation_year', 'Graduation Year'), escHtml(meta.graduation_year)) : ''}
       ${row('Issued By', escHtml(docData.issued_by))}
       ${docData.doc_type ? row('Document Type', escHtml(docData.doc_type)) : ''}
       ${row('Issue Date', formatDate(docData.issue_date))}

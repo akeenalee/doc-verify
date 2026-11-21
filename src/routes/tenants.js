@@ -10,6 +10,9 @@ const crypto  = require('crypto');
 const pool    = require('../db/pool');
 const { clearTenantCache } = require('../middleware/tenantResolver');
 const { createInvite } = require('../utils/staffInvite');
+const deployment = require('../deployment');
+const { PACKS } = require('../sectors');
+const { seedTemplates } = require('../utils/docTemplates');
 
 const ROOT_TENANT = (process.env.ROOT_TENANT_SUBDOMAIN || 'demo').toLowerCase();
 const ROOT_DOMAIN = process.env.TENANT_ROOT_DOMAIN || 'univerify.ng';
@@ -93,7 +96,11 @@ function validate(body) {
     primary_colour: clean(body.primary_colour, 7) || '#1A3A5C',
     accent_colour:  clean(body.accent_colour, 7) || '#B8860B',
     plan:           clean(body.plan, 20) || 'standard',
+    // This deployment's only sector when it has one (tertiary); otherwise picked
+    sector:         clean(body.sector, 30) || (deployment.ALLOWED.length === 1 ? deployment.ALLOWED[0] : null),
   };
+  // Government issuers keep the official PDF layout they had before sectors
+  if (data.sector === 'government' && !body.institution_type) data.institution_type = 'government';
 
   if (!data.name || data.name.length < 3) errors.name = 'Enter the institution\'s full name.';
   if (!SUBDOMAIN_RE.test(data.subdomain))
@@ -113,6 +120,10 @@ function validate(body) {
   if (!HEX_RE.test(data.primary_colour)) errors.primary_colour = 'Use a hex colour like #1A3A5C.';
   if (!HEX_RE.test(data.accent_colour))  errors.accent_colour  = 'Use a hex colour like #B8860B.';
   if (!PLANS.includes(data.plan)) errors.plan = 'Pick a valid plan.';
+  if (!deployment.allows(data.sector))
+    errors.sector = deployment.MODE === 'tertiary'
+      ? 'This service is for universities, polytechnics and colleges. Onboard other issuers on the sectors service.'
+      : 'Pick a sector. Universities, polytechnics and colleges are onboarded on univerify.ng.';
 
   return { data, errors };
 }
@@ -121,7 +132,7 @@ function validate(body) {
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT t.id, t.name, t.subdomain, t.short_code, t.institution_type,
+      `SELECT t.id, t.name, t.subdomain, t.short_code, t.institution_type, t.sector,
               t.contact_email, t.primary_colour, t.accent_colour, t.logo_url,
               t.plan, t.active, t.created_at,
               (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id)::int AS documents,
@@ -145,6 +156,9 @@ router.get('/', async (req, res) => {
         return { ...t, url, presenter_link: presenter_token ? presenterUrl(url, presenter_token) : null };
       }),
       root_subdomain: ROOT_TENANT,
+      deployment: deployment.MODE,
+      sectors: deployment.ALLOWED.map(k => ({ key: k, label: PACKS[k].label, id_label: PACKS[k].terms.id_label,
+        doc_types: PACKS[k].doc_types.map(t => t.name) })),
     });
   } catch (e) {
     console.error('List tenants error:', e.message);
@@ -185,14 +199,16 @@ router.post('/', async (req, res) => {
       `INSERT INTO tenants (
          name, subdomain, short_code, institution_type, contact_email,
          contact_phone, website, address, logo_url, primary_colour,
-         accent_colour, plan, active
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE)
-       RETURNING id, name, subdomain, short_code, institution_type, plan, created_at`,
+         accent_colour, plan, active, sector
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,$13)
+       RETURNING id, name, subdomain, short_code, institution_type, sector, plan, created_at`,
       [data.name, data.subdomain, data.short_code, data.institution_type,
        data.contact_email, data.contact_phone, data.website, data.address,
-       data.logo_url, data.primary_colour, data.accent_colour, data.plan]
+       data.logo_url, data.primary_colour, data.accent_colour, data.plan, data.sector]
     );
     const tenant = result.rows[0];
+    // Non-school issuers start with their sector's document types, editable later
+    if (tenant.sector !== 'tertiary') await seedTemplates(client, tenant.id, tenant.sector);
     const url    = tenantUrl(req, tenant.subdomain);
 
     let presenterLink = null;

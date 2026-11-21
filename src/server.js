@@ -136,6 +136,11 @@ app.use('/app-api', (req, res, next) => {
   }
   next();
 });
+// The issuer's sector kit (wording, document types, status rules) for every staff route
+const { kitFor } = require('./utils/docTemplates');
+app.use('/app-api', (req, res, next) => {
+  kitFor(req.tenant).then(kit => { req.kit = kit; next(); }, next);
+});
 app.use('/app-api/auth', staffAuthRouter);
 app.use('/app-api/settings', require('./routes/staffSettings'));
 app.use('/app-api/batches', require('./routes/staffBatches'));
@@ -229,6 +234,8 @@ app.get('/api/tenant-info', async (req, res) => {
     accent_colour:    req.tenant.accent_colour,
     subdomain:        req.tenant.subdomain,
     short_code:       req.tenant.short_code,
+    sector:           req.tenant.sector || 'tertiary',
+    terms:            (({ id_label, portal, holder }) => ({ id_label, portal, holder }))(require('./sectors').pack(req.tenant.sector).terms),
   });
 });
 
@@ -244,9 +251,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`UniVerify running on http://localhost:${PORT}`);
-  require('./utils/retention').scheduleRetention();
+// Refuse to start against the other deployment's database (see src/deployment.js)
+const deployment = require('./deployment');
+deployment.checkDatabase(pool).then(() => {
+  app.listen(PORT, () => {
+    console.log(`UniVerify (${deployment.MODE}) running on http://localhost:${PORT}`);
+    require('./utils/retention').scheduleRetention();
+  });
+}, err => {
+  console.error('Start-up check failed: ' + err.message);
+  process.exit(1);
 });
 
 module.exports = app;

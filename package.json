@@ -12,7 +12,8 @@
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
     "test": "node tests/run.js",
-    "test:setup": "node tests/run.js --setup"
+    "test:setup": "node tests/run.js --setup",
+    "init:sectors-db": "node scripts/init-sectors-db.js"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.10.0",

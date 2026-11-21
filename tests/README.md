@@ -35,10 +35,14 @@ TEST_DATABASE_URL=postgres://postgres@localhost:5432/uvtest npm test -- e2e7
 
 The runner starts its own server for each suite with test-only secrets, so nothing in `.env` is used: no email goes out, Paystack is never called and the real signing key is never loaded. Server logs and downloaded files go to your temp folder (`univerify-tests`), or `TEST_OUT` if set. `e2e3` and `e2e5` need `unzip` on the path.
 
+`e2e13` covers the sectors deployment (`DEPLOYMENT=sectors`). Its start-up guard refuses a database holding school issuers, so the runner gives it a second database, `<your test database>_sectors` on the same server (or `SECTORS_TEST_DATABASE_URL`), dropped and rebuilt on every run with `seed-sectors.sql` (demo only). The database user needs CREATEDB, which the local `postgres` user has. It also starts the server against each wrong database to check the guard refuses both ways.
+
 `schema.sql` is a schema-only dump. `--setup` loads it into an empty database, then runs every numbered migration, so new migrations are picked up without regenerating it.
 
 ## UI scripts
 
 `ui4.js` to `ui6.js` drive the workspace in Chromium with Playwright and save screenshots to the temp folder. They expect a server already running on :3000 with the same environment the runner uses (`ADMIN_USER`, `ADMIN_PASS`, `TEST_DATABASE_URL`). They aren't part of `npm test`.
+
+`ui7.js` drives the workspace as a professional body after `e2e13` has run: start a server with `DEPLOYMENT=sectors` against the `_sectors` database, then run it. It saves `sector-*.png` and fails if a school word (matric, student, graduate, faculty, SIS, class list) shows on any of 14 pages.
 
 `ui-csp.js` drives every page (demo dashboard, IL admin, holder portal, pay page, staff workspace, verify page on a phone) under the real Content-Security-Policy and fails on any blocked script or page error. Run it the same way, against a freshly reset database.

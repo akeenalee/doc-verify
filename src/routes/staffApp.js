@@ -16,16 +16,16 @@ const { issueClaimCode, CLAIM_DAYS } = require('../utils/claims');
 const { activeKey } = require('../utils/signing');
 const { registrationCheck, markIssued, lockRecord } = require('../utils/studentRecords');
 const { generatePDF } = require('../utils/pdfGenerator');
+const { TERTIARY } = require('../utils/docTemplates');
+const { publicPack } = require('../sectors');
 
 const ANY     = requireStaff();
 const ISSUERS = requireStaff('owner', 'officer', 'approver');
 const OWNER   = requireStaff('owner');
 const OVERSIGHT = requireStaff('owner', 'auditor');
 
-const DOC_TYPES = [
-  'Certificate', 'Transcript', 'Statement of Results', 'Diploma', 'Completion',
-  'Admission', 'Attestation', 'Clearance Certificate', 'Professional Licence',
-];
+// Tertiary document types; each issuer's own list comes from req.kit
+const DOC_TYPES = TERTIARY.names;
 const REVOKE_REASONS = {
   issued_in_error:          'Issued in error',
   fraud:                    'Fraud or misrepresentation',
@@ -40,22 +40,26 @@ const clean = (v, max = 255) => cleanText(v, max);
 const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-function documentInput(body, tenant) {
+// kit: the issuer's sector kit (document types, wording). nameLabel lets bulk
+// upload say "Full name" instead of the sector's holder name.
+function documentInput(body, tenant, kit = TERTIARY, nameLabel = null) {
   const doc_type = clean(body.doc_type, 100);
   const title    = clean(body.title);
   const issued_to = clean(body.issued_to);
   const matric   = clean(body.matric_number, 50).toUpperCase();
   const errors = [];
-  if (!DOC_TYPES.includes(doc_type)) errors.push('Pick a document type.');
+  const terms = kit.terms;
+  if (!kit.names.includes(doc_type)) errors.push('Pick a document type.');
   if (!title)     errors.push('Document title is required.');
-  if (!issued_to) errors.push('Graduate name is required.');
-  if (!matric)    errors.push('Matric number is required.');
+  if (!issued_to) errors.push(`${nameLabel || terms.holder.charAt(0).toUpperCase() + terms.holder.slice(1) + ' name'} is required.`);
+  if (!matric)    errors.push(`${terms.id_label} is required.`);
   if (body.expiry_date && !isDate(body.expiry_date)) errors.push('Expiry date must be YYYY-MM-DD.');
   if (errors.length) return { errors };
 
   const meta = {
     matric_number:   matric,
-    institution_type: tenant.institution_type === 'government' ? 'government' : 'academic',
+    // 'government' picks the official (non-academic) PDF layout
+    institution_type: tenant.institution_type === 'government' || kit.pack.layout === 'official' ? 'government' : 'academic',
     programme:       clean(body.programme, 200),
     course:          clean(body.programme, 200),
     faculty:         clean(body.faculty, 200),
@@ -108,7 +112,8 @@ function sendErr(res, e, fallback) {
 
 // ── Reference data ──────────────────────────────────────────────────────────
 router.get('/meta', requireStaff(...ROLES), (req, res) => {
-  res.json({ doc_types: DOC_TYPES, revoke_reasons: REVOKE_REASONS, roles: ROLES, restore_days: RESTORE_DAYS, claim_days: CLAIM_DAYS });
+  res.json({ ...publicPack(req.kit.sector, req.kit.types),
+    revoke_reasons: REVOKE_REASONS, roles: ROLES, restore_days: RESTORE_DAYS, claim_days: CLAIM_DAYS });
 });
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
@@ -186,7 +191,7 @@ router.get('/documents', ANY, async (req, res) => {
   const where  = ['d.tenant_id = $1'];
   const params = [t];
   if (STATUSES.includes(req.query.status)) { params.push(req.query.status); where.push(`d.status = $${params.length}`); }
-  if (DOC_TYPES.includes(req.query.type))  { params.push(req.query.type);   where.push(`d.doc_type = $${params.length}`); }
+  if (req.kit.names.includes(req.query.type))  { params.push(req.query.type);   where.push(`d.doc_type = $${params.length}`); }
   if (isDate(req.query.from)) { params.push(req.query.from); where.push(`d.issue_date >= $${params.length}`); }
   if (isDate(req.query.to))   { params.push(req.query.to);   where.push(`d.issue_date <= $${params.length}`); }
   const w = where.join(' AND ');
@@ -241,23 +246,23 @@ router.get('/documents/:docId', ANY, async (req, res) => {
 // Validate the form, check the student against the school's records and, when
 // found, take the printed details from the record instead of what was sent.
 // Returns { status, error, warnings } on failure, else { values, check }.
-async function checkedInput(body, tenant) {
-  const first = documentInput(body, tenant);
+async function checkedInput(body, tenant, kit) {
+  const first = documentInput(body, tenant, kit);
   if (first.errors) return { status: 400, error: first.errors.join(' ') };
   const v = first.values;
-  const check = await registrationCheck(tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to);
+  const check = await registrationCheck(tenant.id, v.doc_type, v.metadata.matric_number, v.issued_to, kit);
   if (check.errors.length) return { status: 422, error: check.errors.join(' '), warnings: check.warnings };
   if (!check.record) return { values: v, check };
   const d = { ...body, full_name: body.issued_to };
   check.replaced = lockRecord(d, check.record);
   d.issued_to = d.full_name;
-  return { values: documentInput(d, tenant).values, check };
+  return { values: documentInput(d, tenant, kit).values, check };
 }
 
 router.post('/documents', ISSUERS, async (req, res) => {
   const client = await pool.connect();
   try {
-    const input = await checkedInput(req.body, req.tenant);
+    const input = await checkedInput(req.body, req.tenant, req.kit);
     if (input.error) return res.status(input.status).json({ error: input.error, warnings: input.warnings });
     const { values: v, check } = input;
     const doc = await insertDocument(client, req.tenant, req.staff, v);
@@ -314,7 +319,7 @@ router.post('/documents/:docId/reissue', ISSUERS, async (req, res) => {
   const note = cleanNote(req.body.note, 500);
   if (!note) return res.status(400).json({ error: 'Say what was corrected.' });
   let input;
-  try { input = await checkedInput(req.body, req.tenant); }
+  try { input = await checkedInput(req.body, req.tenant, req.kit); }
   catch (e) { return sendErr(res, e, 'Failed to check student records.'); }
   if (input.error) return res.status(input.status).json({ error: input.error, warnings: input.warnings });
   const check = input.check;
@@ -391,7 +396,7 @@ router.post('/documents/:docId/claim-code', ISSUERS, async (req, res) => {
     const doc = await loadDoc(req.tenant.id, req.params.docId);
     if (!doc) return res.status(404).json({ error: 'Document not found.' });
     const matric = doc.metadata?.matric_number;
-    if (!matric) return res.status(400).json({ error: 'This document has no matric number, so there is nothing for a graduate to claim.' });
+    if (!matric) return res.status(400).json({ error: `This document has no ${req.kit.terms.id_label.toLowerCase()}, so there is nothing for a ${req.kit.terms.holder} to claim.` });
     if (doc.status !== 'active') return res.status(409).json({ error: 'Claim codes are only for active documents.' });
     const { code, expires_at } = await issueClaimCode(pool, req.tenant.id, matric, req.staff.id);
     await logActivity(req, { action: 'claim_code_issued', targetType: 'document', targetId: doc.doc_id,
